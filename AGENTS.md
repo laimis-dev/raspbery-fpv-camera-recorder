@@ -42,6 +42,25 @@ These guidelines apply to the entire repository.
 - Pass subprocess arguments as a list; do not use `shell=True`.
 - Importing a module must not start capture, spawn processes, or create files.
 
+## Naming conventions
+
+- Use names that describe a value's purpose and distinguish it from related
+  values. Prefer `output_path`, `recording_store`, `ffmpeg_process`, and
+  `exit_code` over `output`, `files`, `process`, and `code`.
+- Distinguish paths, device names, and executables: use `video_device_path`,
+  `audio_device_name`, and `ffmpeg_executable`. Name collections for their
+  contents, such as `recording_paths` and `streams_by_type`.
+- Include units where they clarify numeric settings or durations, such as
+  `video_frame_rate_fps`, `shutdown_timeout_seconds`, and `duration_seconds`.
+- Give events and callbacks names that explain their role, such as
+  `stop_requested_event` and `request_recording_stop`.
+- Name functions and methods with specific action verbs and their subject, such
+  as `create_recording_path`, `validate_saved_recording`,
+  `build_recording_command`, and `record_until_stopped`.
+- Apply these conventions consistently to interfaces, implementations, keyword
+  arguments, test fixtures, and documentation. Keep conventional entry points
+  and framework hooks such as `main` and `setUpClass`.
+
 ## Recording lifecycle and files
 
 - Never overwrite an existing recording. Preserve FFmpeg's `-n` protection.

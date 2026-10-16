@@ -1,0 +1,125 @@
+"""Application and FFmpeg integration checks without capture hardware."""
+
+from dataclasses import replace
+import json
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+from threading import Event
+import time
+import unittest
+from unittest.mock import patch
+
+PROJECT_ROOT_PATH = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT_PATH))
+
+from recorder import cli
+from recorder.config import Settings
+from recorder.errors.recording_error import RecordingError
+from recorder.ffmpeg.ffmpeg_recorder import FFmpegRecorder
+from tests.recording_fixtures import SyntheticCommandBuilder
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg and ffprobe are required")
+class RecordingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temporary_media_directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.temporary_media_directory.cleanup)
+        cls.video_fixture_path = Path(cls.temporary_media_directory.name) / "camera.avi"
+        subprocess.run([
+            "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x480:rate=60",
+            "-t", "1", "-c:v", "mjpeg", "-threads", "1", str(cls.video_fixture_path),
+        ], check=True, timeout=10)
+
+    def assert_playable_recording(self, output_path):
+        probe_result = subprocess.run([
+            "ffprobe", "-v", "error", "-count_packets", "-show_streams", "-of", "json", str(output_path),
+        ], capture_output=True, text=True, check=True, timeout=10)
+        streams_by_type = {stream_metadata["codec_type"]: stream_metadata for stream_metadata in json.loads(probe_result.stdout)["streams"]}
+        self.assertEqual(set(streams_by_type), {"video", "audio"})
+        self.assertEqual(streams_by_type["video"]["codec_name"], "mjpeg")
+        self.assertEqual(streams_by_type["audio"]["codec_name"], "aac")
+        for stream_metadata in streams_by_type.values():
+            self.assertGreater(int(stream_metadata["nb_read_packets"]), 0)
+        decode_result = subprocess.run([
+            "ffmpeg", "-v", "error", "-i", str(output_path), "-map", "0:v", "-map", "0:a", "-f", "null", "-",
+        ], capture_output=True, text=True, timeout=10)
+        self.assertEqual(decode_result.returncode, 0, decode_result.stderr)
+        self.assertEqual(decode_result.stderr, "")
+        return streams_by_type
+
+    def test_main_starts_without_arguments_and_saves_both_streams(self):
+        with tempfile.TemporaryDirectory() as temporary_directory_path:
+            recording_settings = replace(Settings(), recordings_directory_path=Path(temporary_directory_path) / "recordings", video_device_path=str(self.video_fixture_path))
+            command_builder = SyntheticCommandBuilder(recording_settings, duration_seconds=1)
+            with patch("recorder.cli.Settings", return_value=recording_settings), patch("recorder.bootstrap.FFmpegCommandBuilder", return_value=command_builder):
+                self.assertEqual(cli.main(), 0)
+            recording_paths = list(recording_settings.recordings_directory_path.glob("*.mkv"))
+            self.assertEqual(len(recording_paths), 1)
+            streams_by_type = self.assert_playable_recording(recording_paths[0])
+            self.assertEqual(streams_by_type["video"]["r_frame_rate"], "60/1")
+            self.assertEqual(int(streams_by_type["video"]["nb_read_packets"]), 60)
+
+    def test_ctrl_c_and_sigterm_finalize_recordings(self):
+        for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=shutdown_signal), tempfile.TemporaryDirectory() as temporary_directory_path:
+                recordings_directory_path = Path(temporary_directory_path) / "recordings"
+                capture_log_path = Path(temporary_directory_path) / "capture.log"
+                recorder_subprocess_script = f'''
+import sys
+from pathlib import Path
+from unittest.mock import patch
+from tests.recording_fixtures import SyntheticCommandBuilder
+from recorder.config import Settings
+from recorder import cli
+recording_settings = Settings(video_device_path={str(self.video_fixture_path)!r}, recordings_directory_path=Path({str(recordings_directory_path)!r}))
+with patch("recorder.cli.Settings", return_value=recording_settings), patch("recorder.bootstrap.FFmpegCommandBuilder", SyntheticCommandBuilder):
+    raise SystemExit(cli.main())
+'''
+                with capture_log_path.open("w") as log_file:
+                    recorder_process = subprocess.Popen([sys.executable, "-c", recorder_subprocess_script], cwd=PROJECT_ROOT_PATH, stdout=log_file, stderr=log_file)
+                    try:
+                        startup_deadline_seconds = time.monotonic() + 10
+                        while not re.search(r"frame=\s*[1-9]", capture_log_path.read_text()):
+                            if recorder_process.poll() is not None or time.monotonic() > startup_deadline_seconds:
+                                self.fail(capture_log_path.read_text())
+                            time.sleep(0.05)
+                        recorder_process.send_signal(shutdown_signal)
+                        self.assertEqual(recorder_process.wait(timeout=20), 0, capture_log_path.read_text())
+                    finally:
+                        if recorder_process.poll() is None:
+                            recorder_process.kill()
+                            recorder_process.wait()
+                recording_paths = list(recordings_directory_path.glob("*.mkv"))
+                self.assertEqual(len(recording_paths), 1)
+                self.assertIn("Saved:", capture_log_path.read_text())
+                self.assert_playable_recording(recording_paths[0])
+
+    def test_existing_recording_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary_directory_path:
+            output_path = Path(temporary_directory_path) / "capture.mkv"
+            output_path.write_bytes(b"existing recording")
+            ffmpeg_recorder = FFmpegRecorder(SyntheticCommandBuilder(replace(Settings(), video_device_path=str(self.video_fixture_path))), 15)
+            with self.assertRaises(RecordingError):
+                ffmpeg_recorder.record_to_file(output_path, Event())
+            self.assertEqual(output_path.read_bytes(), b"existing recording")
+
+    def test_disk_write_failure_is_reported(self):
+        class FullDiskCommandBuilder(SyntheticCommandBuilder):
+            def build_recording_command(self, output_path):
+                ffmpeg_command = super().build_recording_command(output_path)
+                ffmpeg_command[ffmpeg_command.index("-n")] = "-y"
+                return ffmpeg_command
+        command_builder = FullDiskCommandBuilder(replace(Settings(), video_device_path=str(self.video_fixture_path)), duration_seconds=0.1)
+        ffmpeg_recorder = FFmpegRecorder(command_builder, 15)
+        with self.assertRaises(RecordingError):
+            ffmpeg_recorder.record_to_file(Path("/dev/full"), Event())
+
+
+if __name__ == "__main__":
+    unittest.main()

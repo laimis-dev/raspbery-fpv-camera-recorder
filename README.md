@@ -29,8 +29,9 @@ make this input deliver additional frames. True 60 fps capture requires a source
 and capture device that actually deliver that rate; a 60 fps stream label alone
 does not confirm it.
 
-`video_size` and `video_fps` in `recorder/config.py` control the requested capture
-mode. A higher resolution requires a capture device that supports it.
+`video_resolution` and `video_frame_rate_fps` in `recorder/config.py` control the
+requested capture mode. A higher resolution requires a capture device that
+supports it.
 
 On Raspberry Pi OS, install Python and FFmpeg first:
 
@@ -39,7 +40,7 @@ sudo apt install python3 ffmpeg make
 ```
 
 Run the app on the Pi with the capture device and microphone connected. If its
-microphone is not the ALSA default, change `audio_device` in `recorder/config.py`
+microphone is not the ALSA default, change `audio_device_name` in `recorder/config.py`
 to its ALSA name, for example `plughw:CARD=CAMERA,DEV=0`.
 
 ## Development commands

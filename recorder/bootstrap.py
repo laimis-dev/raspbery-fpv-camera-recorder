@@ -7,11 +7,11 @@ from recorder.services.recording_service import RecordingService
 from recorder.storage.recording_files import RecordingFiles
 
 
-def create_recording_service(settings: Settings) -> RecordingService:
+def create_recording_service(recording_settings: Settings) -> RecordingService:
     return RecordingService(
-        recorder=FFmpegRecorder(
-            command_builder=FFmpegCommandBuilder(settings),
-            shutdown_timeout_seconds=settings.shutdown_timeout_seconds,
+        capture_recorder=FFmpegRecorder(
+            command_builder=FFmpegCommandBuilder(recording_settings),
+            shutdown_timeout_seconds=recording_settings.shutdown_timeout_seconds,
         ),
-        files=RecordingFiles(settings.recordings_directory),
+        recording_store=RecordingFiles(recording_settings.recordings_directory_path),
     )

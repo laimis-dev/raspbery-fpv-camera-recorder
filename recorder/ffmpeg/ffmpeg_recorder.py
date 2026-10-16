@@ -11,39 +11,47 @@ from recorder.ffmpeg.command_builder import FFmpegCommandBuilder
 
 
 class FFmpegRecorder:
-    def __init__(self, command_builder: FFmpegCommandBuilder, shutdown_timeout_seconds: float) -> None:
+    def __init__(
+        self, command_builder: FFmpegCommandBuilder, shutdown_timeout_seconds: float
+    ) -> None:
         self.command_builder = command_builder
         self.shutdown_timeout_seconds = shutdown_timeout_seconds
 
-    def record(self, output: Path, stop_requested: Event) -> None:
+    def record_to_file(self, output_path: Path, stop_requested_event: Event) -> None:
         try:
             # The CLI owns OS signals. FFmpeg receives only our forwarded stop.
-            process = subprocess.Popen(self.command_builder.build(output), start_new_session=True)
-        except FileNotFoundError as exc:
-            raise RecordingError("FFmpeg is missing. Install it with: sudo apt install ffmpeg") from exc
+            ffmpeg_process = subprocess.Popen(
+                self.command_builder.build_recording_command(output_path),
+                start_new_session=True,
+            )
+        except FileNotFoundError as error:
+            raise RecordingError("FFmpeg is missing. Install it with: sudo apt install ffmpeg") from error
 
-        stop_time = None
+        shutdown_started_at = None
         try:
             while True:
-                if stop_requested.is_set() and stop_time is None:
-                    stop_time = time.monotonic()
+                if stop_requested_event.is_set() and shutdown_started_at is None:
+                    shutdown_started_at = time.monotonic()
                     try:
-                        process.send_signal(signal.SIGINT)
+                        ffmpeg_process.send_signal(signal.SIGINT)
                     except ProcessLookupError:
                         pass
                 try:
-                    code = process.wait(timeout=0.25)
+                    exit_code = ffmpeg_process.wait(timeout=0.25)
                     break
                 except subprocess.TimeoutExpired:
-                    if stop_time is not None and time.monotonic() - stop_time > self.shutdown_timeout_seconds:
+                    if (
+                        shutdown_started_at is not None
+                        and time.monotonic() - shutdown_started_at > self.shutdown_timeout_seconds
+                    ):
                         raise RecordingError("Recorder did not stop; the file may be incomplete.")
         finally:
-            if process.poll() is None:
-                process.kill()
-                process.wait()
+            if ffmpeg_process.poll() is None:
+                ffmpeg_process.kill()
+                ffmpeg_process.wait()
 
-        if code != 0 and not (stop_time is not None and code == 255):
+        if exit_code != 0 and not (shutdown_started_at is not None and exit_code == 255):
             raise RecordingError(
-                f"Recording failed (FFmpeg exit {code}). See the error above. "
+                f"Recording failed (FFmpeg exit {exit_code}). See the error above. "
                 "Close OBS if the camera is busy."
             )
