@@ -8,6 +8,8 @@ These guidelines apply to the entire repository.
   recording immediately with defaults. Bare `make` also starts recording.
 - Keep settings in `recorder/config.py`. Do not introduce command-line modes,
   menus, or alternate capture paths unless the requested feature needs them.
+- Keep deployment overrides in `Settings.from_environment()`; local runs retain
+  their defaults. Configure the boot service through `nixos/module.nix`.
 - Capture camera video and microphone audio together in one FFmpeg process.
 - Save each session to a new `.mkv` file under the configured recordings directory.
 
@@ -90,3 +92,11 @@ These guidelines apply to the entire repository.
 - Update `README.md` when commands, settings, module locations, or behavior change.
   Keep Makefile help consistent with its targets.
 - Keep recordings, generated media, and Python caches out of version control.
+- For NixOS changes, evaluate the flake with `make nixos-check` after configuring
+  an administrator public key. Keep dependencies pinned in `flake.lock`.
+- Boot recording must use persistent writable storage outside the Nix store and
+  named hardware inputs that work without a desktop login. Preserve systemd's
+  `KillMode=mixed` and a stop timeout longer than the app's shutdown deadline.
+- Do not claim a configuration boots on the Pi based only on Nix evaluation or
+  generated-media tests. Report image-build and target-hardware validation
+  separately.

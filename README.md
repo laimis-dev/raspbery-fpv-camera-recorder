@@ -11,23 +11,20 @@ next to `main.py`.
 
 Running `make` also starts recording. You can run `python3 main.py` directly.
 
-The defaults use `/dev/video0`, MJPEG video at 640x480 and a requested 60 fps,
+The defaults request `/dev/video0`, MJPEG video at 640x480 and PAL's 25 fps,
 and the system's default microphone. Video is saved without re-encoding; audio
 is saved as AAC. Close OBS or deactivate its camera source before starting the
 recorder.
 
-640x480 is the highest resolution advertised by the connected ARKMICRO USB
-capture device. It advertises approximately 60 fps at that resolution. Capture
-requests this mode directly; actual delivered frame rate and unique frames still
-depend on the input signal and device. The app preserves the received video
-without upscaling or frame duplication.
+640x480 is the highest resolution advertised by the connected ARKMICRO USB DVR
+capture device. Both local and NixOS defaults request this resolution. The app
+preserves received video without upscaling or frame duplication; requested
+settings do not guarantee the negotiated capture mode.
 
 Hardware checks on the current input delivered frames about 40 ms apart
-(approximately 25 fps), despite negotiating a 60 fps mode. Lower-resolution
-checks also delivered approximately 25 fps. The requested 60 fps setting cannot
-make this input deliver additional frames. True 60 fps capture requires a source
-and capture device that actually deliver that rate; a 60 fps stream label alone
-does not confirm it.
+(approximately 25 fps), consistent with the requested PAL frame rate. The USB
+adapter may negotiate a different rate in its stream metadata; actual frame
+timing depends on the input and capture device.
 
 `video_resolution` and `video_frame_rate_fps` in `recorder/config.py` control the
 requested capture mode. A higher resolution requires a capture device that
@@ -43,6 +40,15 @@ Run the app on the Pi with the capture device and microphone connected. If its
 microphone is not the ALSA default, change `audio_device_name` in `recorder/config.py`
 to its ALSA name, for example `plughw:CARD=CAMERA,DEV=0`.
 
+## Automatic recording on a Raspberry Pi 4
+
+The [NixOS deployment guide](nixos/README.md) covers installing the boot service
+on an existing NixOS Pi and building a complete Pi 4 SD-card image.
+
+The service starts during boot without a login or network connection, retries
+when capture devices are not ready, and finalizes the recording during a normal
+shutdown. It saves files to `/var/lib/fpv-recorder/recordings`.
+
 ## Development commands
 
 | Command | Action |
@@ -50,10 +56,17 @@ to its ALSA name, for example `plughw:CARD=CAMERA,DEV=0`.
 | `make run` | Start recording with the default settings. |
 | `make test` | Run all tests, including FFmpeg integration checks. |
 | `make check` | Check Python syntax. |
+| `make nixos-check` | Evaluate the NixOS configuration after adding an admin SSH key. |
+| `make nixos-image` | Build the Pi 4 SD-card image using an AArch64 builder. |
 | `make clean` | Remove generated Python caches; recordings are preserved. |
 | `make help` | Show available commands. |
 
 To use another interpreter: `make test PYTHON=.venv/bin/python`.
+
+For deployment, `Settings.from_environment()` reads `FPV_VIDEO_DEVICE_PATH`,
+`FPV_AUDIO_DEVICE_NAME`, `FPV_VIDEO_RESOLUTION`, `FPV_VIDEO_FRAME_RATE_FPS`, and
+`FPV_RECORDINGS_DIRECTORY_PATH`. The NixOS module sets these automatically; local
+runs continue to use the defaults in `recorder/config.py`.
 
 See [AGENTS.md](AGENTS.md) for architecture, coding, recording lifecycle, and
 validation guidelines.

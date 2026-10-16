@@ -32,7 +32,7 @@ class RecordingTests(unittest.TestCase):
         cls.addClassCleanup(cls.temporary_media_directory.cleanup)
         cls.video_fixture_path = Path(cls.temporary_media_directory.name) / "camera.avi"
         subprocess.run([
-            "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x480:rate=60",
+            "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x480:rate=25",
             "-t", "1", "-c:v", "mjpeg", "-threads", "1", str(cls.video_fixture_path),
         ], check=True, timeout=10)
 
@@ -57,13 +57,15 @@ class RecordingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
             recording_settings = replace(Settings(), recordings_directory_path=Path(temporary_directory_path) / "recordings", video_device_path=str(self.video_fixture_path))
             command_builder = SyntheticCommandBuilder(recording_settings, duration_seconds=1)
-            with patch("recorder.cli.Settings", return_value=recording_settings), patch("recorder.bootstrap.FFmpegCommandBuilder", return_value=command_builder):
+            with patch("recorder.cli.Settings.from_environment", return_value=recording_settings), patch("recorder.bootstrap.FFmpegCommandBuilder", return_value=command_builder):
                 self.assertEqual(cli.main(), 0)
             recording_paths = list(recording_settings.recordings_directory_path.glob("*.mkv"))
             self.assertEqual(len(recording_paths), 1)
             streams_by_type = self.assert_playable_recording(recording_paths[0])
-            self.assertEqual(streams_by_type["video"]["r_frame_rate"], "60/1")
-            self.assertEqual(int(streams_by_type["video"]["nb_read_packets"]), 60)
+            self.assertEqual(streams_by_type["video"]["width"], 640)
+            self.assertEqual(streams_by_type["video"]["height"], 480)
+            self.assertEqual(streams_by_type["video"]["r_frame_rate"], "25/1")
+            self.assertEqual(int(streams_by_type["video"]["nb_read_packets"]), 25)
 
     def test_ctrl_c_and_sigterm_finalize_recordings(self):
         for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
@@ -78,7 +80,7 @@ from tests.recording_fixtures import SyntheticCommandBuilder
 from recorder.config import Settings
 from recorder import cli
 recording_settings = Settings(video_device_path={str(self.video_fixture_path)!r}, recordings_directory_path=Path({str(recordings_directory_path)!r}))
-with patch("recorder.cli.Settings", return_value=recording_settings), patch("recorder.bootstrap.FFmpegCommandBuilder", SyntheticCommandBuilder):
+with patch("recorder.cli.Settings.from_environment", return_value=recording_settings), patch("recorder.bootstrap.FFmpegCommandBuilder", SyntheticCommandBuilder):
     raise SystemExit(cli.main())
 '''
                 with capture_log_path.open("w") as log_file:
