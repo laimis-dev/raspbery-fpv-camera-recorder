@@ -67,7 +67,45 @@ official generic AArch64 SD-image module. It includes Pi 4 boot firmware, USB
 camera/audio support, the recorder, HTTP service, hotspot, and Ethernet DHCP.
 SSH is disabled; no administrator account setup is required to start recording.
 
-On an AArch64 Linux builder with Nix and flakes enabled:
+On an x86_64 or ARM64 **Linux PC**, install Docker, Python 3, and `zstd`, make sure the
+Docker daemon is running and accessible to your user, then run:
+
+```sh
+make image
+```
+
+No host Nix installation is needed. On x86_64, the target first uses a privileged
+`tonistiigi/binfmt` container to register ARM64 emulation on the host. It then
+builds using `nixos/nix`, exports the compressed image, and decompresses it to:
+
+```text
+result-image/fpv-recorder-pi4.img
+```
+
+The first build downloads dependencies and can take a while under emulation.
+The Docker volume `fpv-recorder-nix` caches Nix dependencies for later builds.
+Only source inputs are copied into the build; recordings and previous images
+are excluded. Completed images are replaced on a successful rebuild. Extraction
+uses a temporary file so a failed extraction preserves the previous `.img`.
+Both `.img` and `.img.zst` are retained in the ignored `result-image/` directory.
+This target does not flash an SD card.
+
+The Pi configuration uses a **512 MiB FAT32 LBA firmware partition**, followed by
+the ext4 root partition. The generic image module's 30 MiB default selected
+FAT16 while its partition table declared FAT32. The larger firmware partition
+makes those formats consistent; the LBA partition type matches Raspberry Pi OS.
+This corrects a layout inconsistency; it has
+not been established as the cause of the earlier write errors.
+
+The build validates partition boundaries, FAT32 geometry, and the root
+filesystem bounds before publishing the decompressed image. Repeat this check
+on an existing export with:
+
+```sh
+make image-check
+```
+
+Alternatively, on an AArch64 Linux builder with Nix and flakes enabled:
 
 ```sh
 make nixos-check
@@ -78,10 +116,48 @@ An x86 Linux builder needs an AArch64 remote builder or configured AArch64
 emulation. Selecting an architecture does not provide a builder. Dependencies
 are pinned in `flake.lock`.
 
-The image is under `result/sd-image/` as an `.img.zst`. Decompress it with
-`zstd -d`, then use Raspberry Pi Imager's **Use custom** option to write the `.img`
+With `make nixos-image`, the image is under `result/sd-image/` as an `.img.zst`;
+decompress it with `zstd -d`. With `make image`, it is already decompressed.
+Use Raspberry Pi Imager's **Use custom** option to write the `.img`
 to the intended SD card. Writing the image erases that card. There is no automatic
 flashing target.
+
+If Raspberry Pi Imager closes near the start of writing without an error, try
+the current official [Imager release](https://github.com/raspberrypi/rpi-imager/releases).
+On this development PC, Imager 2.0.6 crashed in its write-progress watchdog;
+the generated image's FAT and ext4 filesystems both passed read-only checks,
+and its bytes matched the decompressed archive. This identifies where Imager
+crashed, but does not establish that a newer version will finish the card write.
+The official Linux AppImage can be run with `--appimage-extract-and-run` if FUSE
+is unavailable. Select the `.img` under **Use custom** and skip OS customisation:
+the recorder, hotspot, and settings are already configured in NixOS.
+
+To check an archive and compare its decompressed content with the exported image:
+
+```sh
+zstd -t result-image/fpv-recorder-pi4.img.zst
+sha256sum result-image/fpv-recorder-pi4.img
+zstd -dc result-image/fpv-recorder-pi4.img.zst | sha256sum
+```
+
+The two SHA256 values should match. These checks do not write to the SD card
+and do not establish Pi boot or successful flashing.
+
+If writing fails with **Input/output error**, inspect the kernel log with
+`sudo journalctl -k -n 100`. USB resets, “device offline or changed”, or “medium
+may have changed” messages identify an I/O failure, but alone do not establish
+whether the card, reader, USB connection, host software, or write method caused
+it. These errors also preceded the Imager 2.0.6 crash observed here. Compare
+images using the same card, reader, port, and writer settings before assigning
+a cause. A successful write using another card is useful evidence, but does not
+isolate those variables. A failed write leaves an incomplete image; repeat the
+full write and verification before attempting to boot from it.
+
+The rebuilt FAT32 LBA image was successfully written to a 31.95 GB microSD card
+and all 5,263,962,112 written bytes matched the source image's SHA256 during a
+direct read-back. That card differed from the 31.29 GB card in the failed
+attempts, so this result does not isolate the cause of those failures. Pi boot,
+hotspot availability, and capture on the target hardware remain unverified.
 
 Insert the card and power on. The first boot expands the root partition to fill
 the card. The Pi must already support booting from microSD; this configuration
@@ -165,7 +241,8 @@ Run `make test`, `make check`, and `make nixos-check`. Generated-media tests
 exercise shared live capture, recorded audio/video, and replay without hardware.
 Nix evaluation validates module options and derivations; it does not build an SD
 image or prove Pi boot, hotspot connectivity, or Pi capture/conversion performance.
-Those require target-hardware validation.
+Those require target-hardware validation. `make image-check` checks the exported
+image's structure; it does not check every filesystem block or access the card.
 
 References: [official Pi 4 installation documentation](https://wiki.nixos.org/wiki/NixOS_on_ARM/Raspberry_Pi_4),
 [NixOS hostapd module](https://github.com/NixOS/nixpkgs/blob/nixos-26.05/nixos/modules/services/networking/hostapd.nix),

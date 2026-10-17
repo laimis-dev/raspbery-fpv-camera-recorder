@@ -28,13 +28,27 @@ or internet connection is needed. The hotspot does not share internet access.
 Its configuration is in `nixos/hosts/pi4/hotspot.nix`; the country is set to
 Lithuania (`LT`). Set the country to where you operate the Pi.
 
+To build a bootable SD image on a Linux PC with Docker, Python 3, and `zstd`, run:
+
+```sh
+make image
+```
+
+This sets up ARM64 emulation on x86_64 hosts, builds the image, and decompresses
+it to `result-image/fpv-recorder-pi4.img`. The build checks that the firmware
+partition contains FAT32 and that the partition geometry fits the image before
+publishing it. Open that file in Raspberry Pi Imager to write your SD card.
+Run `make image-check` to repeat the structural check without accessing a card.
+See the deployment guide for details.
+
 The app keeps recording without a browser connected. If the camera or
 microphone is unavailable, it retries every two seconds while keeping the page
 and existing recordings available. Recordings on the Pi are stored in
 `/var/lib/fpv-recorder/recordings`.
 
-The image configuration has been evaluated; an SD image build, physical Pi boot,
-Wi-Fi connection, and Pi performance still need validation on the target hardware.
+Image build and structural validation are separate from verifying the written
+card, physical Pi boot, Wi-Fi connectivity, and Pi performance. Those checks
+still require the target hardware.
 
 ## Live view and replay
 
@@ -96,7 +110,9 @@ to that network can view and download recordings.
 | --- | --- |
 | `make run` | Start recording and the browser page. |
 | `make test` | Run component and generated-media integration tests. |
-| `make check` | Check Python syntax. |
+| `make check` | Check Python and image-builder shell syntax. |
+| `make image` | Build and decompress the Pi 4 SD image using Docker. |
+| `make image-check` | Validate the exported image layout without accessing devices. |
 | `make nixos-check` | Evaluate the NixOS configuration. |
 | `make nixos-image` | Build the Pi 4 SD image using an AArch64 builder. |
 | `make clean` | Remove Python caches; preserve recordings and playback copies. |

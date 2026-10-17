@@ -13,6 +13,15 @@
   hardware.enableRedistributableFirmware = true;
   boot.kernelModules = [ "uvcvideo" "snd-usb-audio" ];
   boot.zfs.forceImportRoot = false;
+  # The generic image declares a FAT32 partition. At 30 MiB mkfs.fat instead
+  # selects FAT16; 512 MiB makes the filesystem match the partition type.
+  sdImage = {
+    firmwareSize = 512;
+    # Use the same FAT32 LBA partition type as Raspberry Pi OS images.
+    postBuildCommands = ''
+      sfdisk --part-type "$img" 1 c
+    '';
+  };
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
   services.fpv-recorder.enable = true;
