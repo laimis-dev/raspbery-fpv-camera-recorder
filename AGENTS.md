@@ -14,7 +14,9 @@ These guidelines apply to the entire repository.
   resolution, or frame-rate defaults as NixOS options. Limit service overrides
   to deployment needs such as writable storage and headless audio selection.
 - Capture camera video and microphone audio together in one FFmpeg process.
-- Save each session to a new `.mkv` file under the configured recordings directory.
+- Save each session to a new `.mp4` file under the configured recordings directory.
+  Use hybrid fragmented MP4 so in-progress data remains recoverable and clean
+  shutdown produces a regular MP4. Keep older MKV recordings browsable.
 - Keep the standalone Pi image usable without SSH keys or account setup.
   SSH is disabled by default; recording starts without a login or network.
 - Start the browser interface with the recorder. Keep it available during capture

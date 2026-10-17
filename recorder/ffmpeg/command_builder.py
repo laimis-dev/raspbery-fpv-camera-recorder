@@ -27,13 +27,16 @@ class FFmpegCommandBuilder:
             "-c:v", "libx264", "-preset", "veryfast", "-threads:v", "2",
             "-crf", str(self.recording_settings.recording_video_quality_crf),
             "-g", str(max(1, round(self.recording_settings.video_frame_rate_fps
-                                  * self.recording_settings.recording_cluster_duration_milliseconds / 1000))),
+                                  * self.recording_settings.recording_fragment_duration_milliseconds / 1000))),
             "-maxrate:v", str(self.recording_settings.recording_video_max_bitrate_bits_per_second),
             "-bufsize:v", str(2 * self.recording_settings.recording_video_max_bitrate_bits_per_second),
             "-pix_fmt", "yuv420p", "-c:a", "aac",
             "-b:a", str(self.recording_settings.recording_audio_bitrate_bits_per_second),
             "-af", "aresample=async=1",
-            "-cluster_time_limit", str(self.recording_settings.recording_cluster_duration_milliseconds),
-            "-flush_packets", "1", "-f", "matroska", str(output_path),
+            "-avoid_negative_ts", "make_zero",
+            # Avoid a stale first-fragment frame count in interrupted files.
+            "-movflags", "+hybrid_fragmented+empty_moov+frag_keyframe+default_base_moof",
+            "-frag_duration", str(self.recording_settings.recording_fragment_duration_milliseconds * 1000),
+            "-flush_packets", "1", "-f", "mp4", str(output_path),
             "-map", "0:v:0", "-c:v", "copy", "-f", "mpjpeg", "pipe:1",
         ]

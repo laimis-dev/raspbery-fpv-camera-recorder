@@ -47,6 +47,9 @@ class RecordingTests(unittest.TestCase):
         self.assertEqual(streams_by_type["audio"]["codec_name"], "aac")
         for stream_metadata in streams_by_type.values():
             self.assertGreater(int(stream_metadata["nb_read_packets"]), 0)
+            # Clean shutdown converts hybrid fragments into a regular MP4 whose
+            # sample tables contain exact counts, without a full-file scan.
+            self.assertEqual(int(stream_metadata["nb_frames"]), int(stream_metadata["nb_read_packets"]))
         decode_result = subprocess.run([
             "ffmpeg", "-v", "error", "-i", str(output_path), "-map", "0:v", "-map", "0:a", "-f", "null", "-",
         ], capture_output=True, text=True, timeout=10)
@@ -74,7 +77,7 @@ class RecordingTests(unittest.TestCase):
                 "recorder.bootstrap.FFmpegCommandBuilder", side_effect=create_synthetic_command_builder
             ):
                 self.assertEqual(cli.main(), 0)
-            recording_paths = list(recordings_directory_path.glob("*.mkv"))
+            recording_paths = list(recordings_directory_path.glob("*.mp4"))
             self.assertEqual(len(recording_paths), 1)
             streams_by_type = self.assert_playable_recording(recording_paths[0])
             self.assertEqual(streams_by_type["video"]["width"], 640)
@@ -84,7 +87,7 @@ class RecordingTests(unittest.TestCase):
 
     def test_compression_preserves_detail_frames_and_audio_with_smaller_files(self):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
-            output_path = Path(temporary_directory_path) / "compressed.mkv"
+            output_path = Path(temporary_directory_path) / "compressed.mp4"
             command_builder = SyntheticCommandBuilder(
                 replace(Settings(), video_device_path=str(self.video_fixture_path)), duration_seconds=3,
             )
@@ -105,7 +108,7 @@ class RecordingTests(unittest.TestCase):
             self.assertLess(output_path.stat().st_size, baseline_path.stat().st_size * 0.85)
 
             # Compare decoded detail with the previous, more aggressive defaults.
-            aggressive_output_path = Path(temporary_directory_path) / "aggressive-compression.mkv"
+            aggressive_output_path = Path(temporary_directory_path) / "aggressive-compression.mp4"
             aggressive_command_builder = SyntheticCommandBuilder(
                 replace(command_builder.recording_settings, recording_video_quality_crf=23,
                         recording_video_max_bitrate_bits_per_second=1_500_000,
@@ -157,14 +160,14 @@ with patch("recorder.cli.Settings.from_environment", return_value=recording_sett
                         if recorder_process.poll() is None:
                             recorder_process.kill()
                             recorder_process.wait()
-                recording_paths = list(recordings_directory_path.glob("*.mkv"))
+                recording_paths = list(recordings_directory_path.glob("*.mp4"))
                 self.assertEqual(len(recording_paths), 1)
                 self.assertIn("Saved:", capture_log_path.read_text())
                 self.assert_playable_recording(recording_paths[0])
 
     def test_existing_recording_is_preserved(self):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
-            output_path = Path(temporary_directory_path) / "capture.mkv"
+            output_path = Path(temporary_directory_path) / "capture.mp4"
             output_path.write_bytes(b"existing recording")
             ffmpeg_recorder = FFmpegRecorder(SyntheticCommandBuilder(replace(Settings(), video_device_path=str(self.video_fixture_path))), 15)
             with self.assertRaises(RecordingError):
@@ -176,7 +179,7 @@ with patch("recorder.cli.Settings.from_environment", return_value=recording_sett
         # intact. This is a crash-recovery check, not a physical power-cut test.
         with tempfile.TemporaryDirectory() as temporary_directory_path:
             media_directory_path = Path(temporary_directory_path)
-            output_path = media_directory_path / "interrupted.mkv"
+            output_path = media_directory_path / "interrupted.mp4"
             capture_log_path = media_directory_path / "capture.log"
             ffmpeg_pid_path = media_directory_path / "ffmpeg.pid"
             sync_log_path = media_directory_path / "sync.log"
@@ -238,12 +241,22 @@ with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", side_effect=launc
                             pass
             self.assertGreaterEqual(output_path.stat().st_size, int(sync_sizes[-1]))
             probe_result = subprocess.run([
-                "ffprobe", "-v", "error", "-show_packets", "-show_streams", "-of", "json", str(output_path),
+                "ffprobe", "-v", "error", "-show_packets", "-show_streams", "-show_format",
+                "-of", "json", str(output_path),
             ], capture_output=True, text=True, check=True, timeout=10)
             recording_metadata = json.loads(probe_result.stdout)
+            self.assertIn("mp4", recording_metadata["format"]["format_name"])
+            self.assertGreater(float(recording_metadata["format"]["duration"]), 3.5)
             streams_by_type = {stream["codec_type"]: stream for stream in recording_metadata["streams"]}
             self.assertEqual(streams_by_type["video"]["codec_name"], "h264")
             self.assertEqual(streams_by_type["audio"]["codec_name"], "aac")
+            # Some hybrid MP4 headers advertise only the first fragment's count
+            # after a crash, causing OpenCV editors to ignore the rest of the clip.
+            advertised_frame_count = streams_by_type["video"].get("nb_frames")
+            if advertised_frame_count is not None:
+                video_packets = [packet for packet in recording_metadata["packets"]
+                                 if packet["stream_index"] == streams_by_type["video"]["index"]]
+                self.assertGreaterEqual(int(advertised_frame_count), len(video_packets))
             for stream_type in ("video", "audio"):
                 stream_index = streams_by_type[stream_type]["index"]
                 last_packet_seconds = max(float(packet["pts_time"]) for packet in recording_metadata["packets"]
@@ -265,7 +278,7 @@ with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", side_effect=launc
         ffmpeg_recorder = FFmpegRecorder(command_builder, 15)
         with tempfile.TemporaryDirectory() as temporary_directory_path:
             with self.assertRaises(RecordingError):
-                ffmpeg_recorder.record_to_file(Path(temporary_directory_path) / "capture.mkv", Event())
+                ffmpeg_recorder.record_to_file(Path(temporary_directory_path) / "capture.mp4", Event())
 
 
 if __name__ == "__main__":

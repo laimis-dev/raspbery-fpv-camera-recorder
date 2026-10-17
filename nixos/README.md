@@ -132,6 +132,13 @@ The official Linux AppImage can be run with `--appimage-extract-and-run` if FUSE
 is unavailable. Select the `.img` under **Use custom** and skip OS customisation:
 the recorder, hotspot, and settings are already configured in NixOS.
 
+Downloading a newer Imager does not update a distribution's existing launcher.
+Check the version of the application you actually open. The official
+[2.0.12 release](https://github.com/raspberrypi/rpi-imager/releases/tag/v2.0.12)
+includes failed-write handling and Linux I/O fixes. Updating the writer may
+avoid the crash, but does not by itself resolve a USB reset or prove that the
+card write will succeed.
+
 To check an archive and compare its decompressed content with the exported image:
 
 ```sh
@@ -168,7 +175,7 @@ The web listener can start before `wlan0` receives its address.
 
 The module exposes service enablement and package selection. Capture defaults
 come from `recorder/config.py`: `/dev/video0`, MJPEG 640x480, requested PAL 25 fps.
-Saved video is compressed to H.264, with AAC microphone audio in MKV. The app's
+Saved video is compressed to H.264, with AAC microphone audio in MP4. The app's
 compression defaults control recording size; see the project README for tuning
 and storage estimates. Live preview continues using the original MJPEG frames.
 Change the app and rebuild for another capture mode. See the
@@ -200,13 +207,15 @@ view and download recordings. Assets and playback work without external sites.
 
 Capture retries every two seconds while browser access remains available.
 systemd restarts unexpected app exits. Files persist between restarts, with a
-new `.mkv` for every capture session. Normal shutdown sends SIGTERM to Python,
-which asks FFmpeg to finalize. systemd allows 25 seconds for capture and the
+new `.mp4` for every capture session. Older MKVs remain browsable. Normal
+shutdown sends SIGTERM to Python, which asks FFmpeg to finalize. systemd allows 25 seconds for capture and the
 background services to stop; capture's deadline is 15 seconds. Power removal
 cannot finalize recordings gracefully.
 
-The app closes recording clusters and requests keyframes about once per second,
-and syncs recording data and directory entries every second in a background
+FFmpeg writes hybrid fragmented MP4: recoverable fragments during capture, then
+a regular MP4 with duration and sample-count metadata on clean shutdown. The
+image's FFmpeg 8.1 supports this mode. The app closes fragments and requests
+keyframes about once per second, and syncs recording data and directory entries every second in a background
 worker. Normal shutdown also waits up to two seconds for final syncing. These
 settings are in `recorder/config.py`, not duplicated in the boot service.
 They reduce power-loss exposure but do not guarantee a maximum lost duration or
@@ -240,7 +249,7 @@ after mounting the root partition, replace the mount path below as needed:
 sudo chmod o+rx /run/media/$USER/NIXOS_SD/var/lib/fpv-recorder
 sudo chmod o+rx /run/media/$USER/NIXOS_SD/var/lib/fpv-recorder/recordings
 sudo find /run/media/$USER/NIXOS_SD/var/lib/fpv-recorder/recordings \
-  -maxdepth 1 -type f -name '*.mkv' -exec chmod o+r {} +
+  -maxdepth 1 -type f \( -name '*.mp4' -o -name '*.mkv' \) -exec chmod o+r {} +
 ```
 
 Rebuild and install the updated image for future recordings to use the new

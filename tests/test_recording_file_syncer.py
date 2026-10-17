@@ -15,7 +15,7 @@ from recorder.storage.recording_file_syncer import RecordingFileSyncer
 class RecordingFileSyncerTests(unittest.TestCase):
     def test_periodic_sync_includes_directory_entries_and_final_file_contents(self):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
-            output_path = Path(temporary_directory_path) / "recordings" / "capture.mkv"
+            output_path = Path(temporary_directory_path) / "recordings" / "capture.mp4"
             output_path.parent.mkdir()
             output_path.write_bytes(b"first frames")
             recording_syncer = RecordingFileSyncer(0.01, 1)
@@ -48,7 +48,7 @@ class RecordingFileSyncerTests(unittest.TestCase):
 
     def test_sync_failure_is_reported_and_preserves_the_recording(self):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
-            output_path = Path(temporary_directory_path) / "capture.mkv"
+            output_path = Path(temporary_directory_path) / "capture.mp4"
             output_path.write_bytes(b"partial recording")
             recording_syncer = RecordingFileSyncer(0.01, 1)
             with patch("recorder.storage.recording_file_syncer.os.fsync",
@@ -63,7 +63,7 @@ class RecordingFileSyncerTests(unittest.TestCase):
 
     def test_blocked_sync_has_bounded_shutdown_and_cannot_spawn_more_workers(self):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
-            output_path = Path(temporary_directory_path) / "capture.mkv"
+            output_path = Path(temporary_directory_path) / "capture.mp4"
             output_path.write_bytes(b"frames")
             recording_syncer = RecordingFileSyncer(0.01, 0.02)
             sync_started_event, release_sync_event = Event(), Event()
@@ -89,12 +89,12 @@ class RecordingFileSyncerTests(unittest.TestCase):
 
     def test_missing_output_is_not_created_and_symlink_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
-            output_path = Path(temporary_directory_path) / "capture.mkv"
+            output_path = Path(temporary_directory_path) / "capture.mp4"
             recording_syncer = RecordingFileSyncer(0.01, 1)
             recording_syncer.start_syncing(output_path)
             recording_syncer.stop_syncing()
             self.assertFalse(output_path.exists())
-            target_path = Path(temporary_directory_path) / "existing.mkv"
+            target_path = Path(temporary_directory_path) / "existing.mp4"
             target_path.write_bytes(b"original")
             output_path.symlink_to(target_path)
             recording_syncer.start_syncing(output_path)

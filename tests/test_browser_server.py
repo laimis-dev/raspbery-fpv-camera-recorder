@@ -17,7 +17,7 @@ class BrowserServerTests(unittest.TestCase):
         temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(temporary_directory.cleanup)
         self.recordings_directory_path = Path(temporary_directory.name)
-        self.recording_path = self.recordings_directory_path / "saved.mkv"
+        self.recording_path = self.recordings_directory_path / "saved.mp4"
         self.recording_path.write_bytes(b"saved recording")
         self.recording_state = RecordingState()
         self.recording_library = FileRecordingLibrary(self.recordings_directory_path, self.recording_state)
@@ -37,15 +37,21 @@ class BrowserServerTests(unittest.TestCase):
         return response.status, dict(response.getheaders()), response.read()
 
     def test_library_excludes_active_empty_and_symlink_files(self):
-        active_path = self.recordings_directory_path / "active.mkv"
+        active_path = self.recordings_directory_path / "active.mp4"
         active_path.write_bytes(b"in progress")
         self.recording_state.mark_started(active_path)
-        (self.recordings_directory_path / "empty.mkv").touch()
-        (self.recordings_directory_path / "linked.mkv").symlink_to(self.recording_path)
+        (self.recordings_directory_path / "empty.mp4").touch()
+        (self.recordings_directory_path / "linked.mp4").symlink_to(self.recording_path)
+        legacy_recording_path = self.recordings_directory_path / "legacy.mkv"
+        legacy_recording_path.write_bytes(b"older recording")
+        (self.recordings_directory_path / "linked.mkv").symlink_to(legacy_recording_path)
+        (self.recordings_directory_path / "unrelated.txt").write_bytes(b"not a recording")
         status_code, _, response_body = self.request("/api/recordings")
         self.assertEqual(status_code, 200)
-        self.assertEqual([entry["filename"] for entry in json.loads(response_body)], ["saved.mkv"])
-        for filename in ("active.mkv", "empty.mkv", "linked.mkv", "..%2Fsaved.mkv", "%2Fetc%2Fpasswd"):
+        self.assertEqual({entry["filename"] for entry in json.loads(response_body)}, {"saved.mp4", "legacy.mkv"})
+        self.assertEqual(self.request("/api/recordings/legacy.mkv/download")[2], b"older recording")
+        for filename in ("active.mp4", "empty.mp4", "linked.mp4", "linked.mkv", "unrelated.txt",
+                         "..%2Fsaved.mp4", "%2Fetc%2Fpasswd"):
             with self.subTest(filename=filename):
                 self.assertIn(self.request(f"/api/recordings/{filename}/download")[0], (400, 404))
 
@@ -53,7 +59,7 @@ class BrowserServerTests(unittest.TestCase):
         playback_path = self.recording_library.playback_cache_path(self.recording_path)
         playback_path.parent.mkdir()
         playback_path.write_bytes(b"0123456789")
-        route_path = "/api/recordings/saved.mkv/play"
+        route_path = "/api/recordings/saved.mp4/play"
         status_code, response_headers, response_body = self.request(route_path, headers={"Range": "bytes=2-5"})
         self.assertEqual(status_code, 206)
         self.assertEqual(response_headers["Content-Range"], "bytes 2-5/10")
@@ -80,11 +86,11 @@ class BrowserServerTests(unittest.TestCase):
         self.assertEqual(response.readline(), b"\r\n")
         self.assertEqual(response.read(12), b"jpeg payload")
         response.close()
-        self.assertEqual(self.request("/api/recordings/saved.mkv/download")[2], b"saved recording")
+        self.assertEqual(self.request("/api/recordings/saved.mp4/download")[2], b"saved recording")
 
     def test_offline_page_assets_and_cross_site_preparation_protection(self):
         for route_path in ("/", "/app.js", "/live_rotation.js", "/styles.css"):
             with self.subTest(route_path=route_path):
                 self.assertEqual(self.request(route_path)[0], 200)
-        self.assertEqual(self.request("/api/recordings/saved.mkv/prepare", "POST",
+        self.assertEqual(self.request("/api/recordings/saved.mp4/prepare", "POST",
                                      {"Origin": "https://another-site.example"})[0], 403)

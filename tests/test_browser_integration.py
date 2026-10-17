@@ -19,6 +19,11 @@ from tests.recording_fixtures import SyntheticCommandBuilder
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg and ffprobe are required")
 class BrowserIntegrationTests(unittest.TestCase):
     def test_shared_capture_live_view_and_cached_replay_include_audio(self):
+        for saved_recording_suffix in (".mp4", ".mkv"):
+            with self.subTest(saved_recording_suffix=saved_recording_suffix):
+                self.assert_shared_capture_and_replay(saved_recording_suffix)
+
+    def assert_shared_capture_and_replay(self, saved_recording_suffix):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
             media_directory_path = Path(temporary_directory_path)
             video_fixture_path = media_directory_path / "camera.avi"
@@ -28,7 +33,8 @@ class BrowserIntegrationTests(unittest.TestCase):
             ], check=True, timeout=10)
             recordings_directory_path = media_directory_path / "recordings"
             recordings_directory_path.mkdir()
-            saved_recording_path = recordings_directory_path / "previous-session.mkv"
+            saved_recording_path = recordings_directory_path / f"previous-session{saved_recording_suffix}"
+            recording_route = f"/api/recordings/{saved_recording_path.name}"
             subprocess.run([
                 "ffmpeg", "-v", "error", "-i", str(video_fixture_path),
                 "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
@@ -74,18 +80,18 @@ class BrowserIntegrationTests(unittest.TestCase):
                 # Leave this viewer idle while the recorder and replay converter continue.
                 connection.request("GET", "/api/recordings")
                 recordings = json.loads(connection.getresponse().read())
-                self.assertEqual([entry["filename"] for entry in recordings], ["previous-session.mkv"])
+                self.assertEqual([entry["filename"] for entry in recordings], [saved_recording_path.name])
                 prepare_deadline_seconds = time.monotonic() + 15
                 while True:
-                    connection.request("POST", "/api/recordings/previous-session.mkv/prepare")
+                    connection.request("POST", f"{recording_route}/prepare")
                     job_status = json.loads(connection.getresponse().read())
                     self.assertNotEqual(job_status["status"], "error", job_status)
                     if job_status["status"] == "ready":
                         break
                     self.assertLess(time.monotonic(), prepare_deadline_seconds, job_status)
                     time.sleep(0.05)
-                playback_path = application_service.playback_service.find_playback_path("previous-session.mkv")
-                connection.request("GET", "/api/recordings/previous-session.mkv/play", headers={"Range": "bytes=0-255"})
+                playback_path = application_service.playback_service.find_playback_path(saved_recording_path.name)
+                connection.request("GET", f"{recording_route}/play", headers={"Range": "bytes=0-255"})
                 range_response = connection.getresponse()
                 self.assertEqual(range_response.status, 206)
                 self.assertEqual(range_response.read(), playback_path.read_bytes()[:256])
@@ -107,7 +113,7 @@ class BrowserIntegrationTests(unittest.TestCase):
                 application_thread.join(timeout=20)
             self.assertFalse(application_thread.is_alive())
             self.assertEqual(application_errors, [])
-            new_recording_paths = [path for path in recordings_directory_path.glob("*.mkv") if path != saved_recording_path]
+            new_recording_paths = [path for path in recordings_directory_path.glob("*.mp4") if path != saved_recording_path]
             self.assertEqual(len(new_recording_paths), 1)
             subprocess.run(["ffmpeg", "-v", "error", "-i", str(new_recording_paths[0]), "-f", "null", "-"],
                            check=True, timeout=10, capture_output=True)

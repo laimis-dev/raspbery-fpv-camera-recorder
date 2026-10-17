@@ -16,7 +16,7 @@ class Settings:
     recording_video_quality_crf: int = 18
     recording_video_max_bitrate_bits_per_second: int = 6_000_000
     recording_audio_bitrate_bits_per_second: int = 128_000
-    recording_cluster_duration_milliseconds: int = 1000
+    recording_fragment_duration_milliseconds: int = 1000
     recording_sync_interval_seconds: float = 1.0
     recording_sync_shutdown_timeout_seconds: float = 2.0
     recordings_directory_path: Path = Path(__file__).resolve().parents[1] / "recordings"

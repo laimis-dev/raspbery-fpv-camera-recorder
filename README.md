@@ -8,7 +8,7 @@ make run
 
 Open **http://127.0.0.1:8080** for the live view, saved recordings, replay, and
 original-file downloads. Press **Ctrl+C** to stop and finalize the recording.
-Each session saves a new `.mkv` file in `recordings/` next to `main.py`.
+Each session saves a new `.mp4` file in `recordings/` next to `main.py`.
 Bare `make` and `python3 main.py` start the same app.
 
 ## Raspberry Pi hotspot
@@ -48,9 +48,9 @@ and existing recordings available. Recordings on the Pi are stored in
 
 To retrieve files directly from the SD card, shut down the Pi and mount the
 card's ext4 root partition on Linux. Open `var/lib/fpv-recorder/recordings` on
-that partition and copy the `.mkv` files. New images allow other users to read
-recordings; see the deployment guide's storage section for a permission fix on
-older cards.
+that partition and copy the `.mp4` files (or older `.mkv` recordings). New images
+allow other users to read recordings; see the deployment guide's storage section
+for a permission fix on older cards.
 
 Image build and structural validation are separate from verifying the written
 card, physical Pi boot, Wi-Fi connectivity, and Pi performance. Those checks
@@ -67,9 +67,9 @@ still require the target hardware.
 - **Replay** prepares a browser-compatible WebM copy of a selected finished
   recording, then opens it with playback, sound, and seeking controls. Long
   recordings take longer to prepare. Further replays reuse the cached copy.
-- **Download original** saves the recorded `.mkv`. New recordings use H.264
+- **Download original** saves the recorded `.mp4`. New recordings use H.264
   video and AAC audio; replay copies use VP8 video and Opus audio. Older MJPEG
-  recordings remain available for replay and download.
+  MKV recordings remain available for replay and download.
 - The current recording appears in the library after its session finishes.
   There is no remote stop button; recording continues while you browse.
 - Preparation runs one file at a time with one video encoder thread and lower
@@ -84,8 +84,15 @@ preserved and listed if nonempty, but may not be playable.
 
 ## Disk writes and power loss
 
-Recording data is written during capture. The defaults close MKV clusters after
-about one second of media, request an H.264 keyframe about every second, and
+Recording data is written directly to MP4 during capture. FFmpeg's
+`hybrid_fragmented` mode writes recoverable fragments while recording, then
+converts the file to a regular MP4 on clean shutdown. Finished files include
+duration and exact sample-count metadata for editors. Interrupted files retain
+completed fragments but may still need remuxing for particular editors.
+See [FFmpeg's MP4 documentation](https://ffmpeg.org/ffmpeg-formats.html#Fragmentation).
+
+The defaults close MP4 fragments after about one second of media,
+request an H.264 keyframe about every second, and
 flush FFmpeg's output buffers. A background worker calls `fsync` on the recording
 and its directory entries every second. This reduces both application buffering
 and Linux's dirty-file cache; it does not wait until recording stops to sync.
@@ -94,7 +101,7 @@ These defaults are in `recorder/config.py`:
 
 | Setting | Default |
 | --- | --- |
-| `recording_cluster_duration_milliseconds` | `1000` |
+| `recording_fragment_duration_milliseconds` | `1000` |
 | `recording_sync_interval_seconds` | `1.0` |
 | `recording_sync_shutdown_timeout_seconds` | `2.0` |
 
@@ -114,6 +121,36 @@ Tests verify periodic/final syncing, error reporting, bounded sync shutdown, and
 decodable audio/video after abruptly killing Python and FFmpeg. Killing processes
 leaves Linux's cache intact, so this does not validate a physical Pi power cut.
 Install a rebuilt image to apply these changes to the Pi.
+
+## Importing recordings into video enhancers and editors
+
+New recordings are MP4 from the start. A clean stop produces a regular MP4 with
+exact frame counts; no separate export is needed. Older MKV recordings interrupted
+by power removal can contain playable media without duration/index metadata.
+REAL Video Enhancer's OpenCV-based reader can report an invalid negative frame
+count for those files and reject the input. A missing explicit frame-count field
+alone does not establish that a recording is corrupt.
+
+For an older H.264/AAC MKV or an interrupted MP4 rejected by an editor, use a
+recent FFmpeg build to rebuild a regular MP4 without re-encoding:
+
+```sh
+ffmpeg -hide_banner -nostdin -n -i recordings/capture-example.mkv \
+  -map 0:v:0 -map '0:a:0?' -c copy -avoid_negative_ts make_zero \
+  -movflags +faststart recordings/capture-example-enhancer.mp4
+```
+
+Replace the example filenames with the actual recording. Open the MP4 in the
+editor. This rebuilds container metadata, retains the encoded video and audio,
+and preserves the original. For an interrupted MP4, use that as the input and
+keep a different output filename. This cannot restore footage lost before it reached
+storage. Older MJPEG recordings need separate compatibility checks; this command
+is intended for the app's current H.264/AAC output. If an old FFmpeg build emits
+timestamp warnings, use a newer build rather than assuming the export is correct.
+
+Recording uses hybrid fragmented MP4 rather than relying on a regular MP4's
+final index for all recoverability. Process-kill recovery is covered by tests;
+physical power removal can still damage storage or the unfinished fragment.
 
 ## Capture settings
 
@@ -162,8 +199,14 @@ names the Ugreen adapter (C-Media USB ID `0d8c:0014`, identified in the Pi's log
 is not the separate lav microphone. If the Ugreen adapter is absent, capture
 retries rather than silently recording from another input.
 
+The MP4 muxer must support `hybrid_fragmented`; the Nix image includes FFmpeg
+8.1. Check with `ffmpeg -hide_banner -h muxer=mp4`. Distribution packages can be
+older or omit encoder support; the apt command above alone does not establish
+compatibility. The recorder reports an error rather than falling back to a
+nonrecoverable regular MP4.
+
 Connect the lav to the adapter's microphone/headset input. After installing the
-updated image, record a short speech sample and listen to a downloaded MKV or
+updated image, record a short speech sample and listen to a downloaded MP4 or
 browser replay; live preview has no sound. Check capture mute/gain and the
 microphone's connector compatibility if the correctly selected input is still
 silent. The input selection fix does not establish the microphone's signal level.
@@ -210,7 +253,7 @@ flowchart TD
     Recording --> RecorderPort[Recorder interface]
     Recording --> StoragePort[RecordingStore interface]
     RecorderPort --> Capture[FFmpegRecorder: one camera and microphone capture]
-    StoragePort --> Files[RecordingFiles: new MKV session]
+    StoragePort --> Files[RecordingFiles: new MP4 session]
     Capture --> Frames[LiveFrameBuffer: latest JPEG only]
     Frames --> Web
     Web --> Library[RecordingLibrary interface]

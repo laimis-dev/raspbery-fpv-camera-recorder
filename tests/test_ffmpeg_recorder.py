@@ -21,7 +21,7 @@ class FFmpegRecorderTests(unittest.TestCase):
         ffmpeg_recorder = FFmpegRecorder(FFmpegCommandBuilder(Settings()), shutdown_timeout_seconds=0)
         with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", return_value=mock_ffmpeg_process):
             with self.assertRaisesRegex(RecordingError, "did not stop"):
-                ffmpeg_recorder.record_to_file(Path("unused.mkv"), stop_requested_event)
+                ffmpeg_recorder.record_to_file(Path("unused.mp4"), stop_requested_event)
         mock_ffmpeg_process.send_signal.assert_called_once_with(signal.SIGINT)
         mock_ffmpeg_process.kill.assert_called_once()
         self.assertEqual(mock_ffmpeg_process.wait.call_count, 2)
@@ -30,7 +30,7 @@ class FFmpegRecorderTests(unittest.TestCase):
         ffmpeg_recorder = FFmpegRecorder(FFmpegCommandBuilder(Settings()), shutdown_timeout_seconds=15)
         with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", side_effect=FileNotFoundError):
             with self.assertRaisesRegex(RecordingError, "FFmpeg is missing"):
-                ffmpeg_recorder.record_to_file(Path("unused.mkv"), Event())
+                ffmpeg_recorder.record_to_file(Path("unused.mp4"), Event())
 
     def test_sync_failure_stops_and_reaps_capture(self):
         mock_ffmpeg_process = Mock()
@@ -41,7 +41,7 @@ class FFmpegRecorderTests(unittest.TestCase):
                                         recording_syncer=recording_syncer)
         with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", return_value=mock_ffmpeg_process):
             with self.assertRaisesRegex(RecordingError, "disk sync failed"):
-                ffmpeg_recorder.record_to_file(Path("unused.mkv"), Event())
+                ffmpeg_recorder.record_to_file(Path("unused.mp4"), Event())
         mock_ffmpeg_process.kill.assert_called_once()
         mock_ffmpeg_process.wait.assert_called_once()
         recording_syncer.stop_syncing.assert_called_once()
@@ -56,4 +56,4 @@ class FFmpegRecorderTests(unittest.TestCase):
                                         recording_syncer=recording_syncer)
         with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", return_value=mock_ffmpeg_process):
             with self.assertRaisesRegex(RecordingError, "final sync failed"):
-                ffmpeg_recorder.record_to_file(Path("unused.mkv"), Event())
+                ffmpeg_recorder.record_to_file(Path("unused.mp4"), Event())
