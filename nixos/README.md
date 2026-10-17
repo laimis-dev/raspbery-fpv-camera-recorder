@@ -217,6 +217,23 @@ without the hotspot, shut down the Pi and mount its SD card's ext4 root partitio
 on Linux; files are under `var/lib/fpv-recorder/recordings`. They are not on the
 small FAT boot partition.
 
+The service creates folders readable and traversable by other users (0755),
+and recordings readable by other users (0644), so a Linux desktop can retrieve
+them directly from the card. Only the recorder's user can write them. Images
+built before this permission change used restricted access. For those cards,
+after mounting the root partition, replace the mount path below as needed:
+
+```sh
+sudo chmod o+rx /run/media/$USER/NIXOS_SD/var/lib/fpv-recorder
+sudo chmod o+rx /run/media/$USER/NIXOS_SD/var/lib/fpv-recorder/recordings
+sudo find /run/media/$USER/NIXOS_SD/var/lib/fpv-recorder/recordings \
+  -maxdepth 1 -type f -name '*.mkv' -exec chmod o+r {} +
+```
+
+Rebuild and install the updated image for future recordings to use the new
+permissions automatically; changing existing files alone does not update the
+installed service.
+
 When a local administrator login is available, use:
 
 ```sh

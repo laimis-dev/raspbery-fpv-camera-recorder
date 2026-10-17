@@ -46,6 +46,12 @@ microphone is unavailable, it retries every two seconds while keeping the page
 and existing recordings available. Recordings on the Pi are stored in
 `/var/lib/fpv-recorder/recordings`.
 
+To retrieve files directly from the SD card, shut down the Pi and mount the
+card's ext4 root partition on Linux. Open `var/lib/fpv-recorder/recordings` on
+that partition and copy the `.mkv` files. New images allow other users to read
+recordings; see the deployment guide's storage section for a permission fix on
+older cards.
+
 Image build and structural validation are separate from verifying the written
 card, physical Pi boot, Wi-Fi connectivity, and Pi performance. Those checks
 still require the target hardware.

@@ -49,7 +49,8 @@ in
         ExecStart = lib.getExe recorderConfig.package;
         User = "fpv-recorder";
         StateDirectory = recorderStateDirectoryName;
-        StateDirectoryMode = "0750";
+        # Let another computer read recordings when the SD card is mounted.
+        StateDirectoryMode = "0755";
         WorkingDirectory = recorderStateDirectoryPath;
         Restart = "always";
         RestartSec = "2s";
@@ -57,7 +58,7 @@ in
         KillMode = "mixed";
         KillSignal = "SIGTERM";
         TimeoutStopSec = "25s";
-        UMask = "0027";
+        UMask = "0022";
         NoNewPrivileges = true;
         AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
         CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
