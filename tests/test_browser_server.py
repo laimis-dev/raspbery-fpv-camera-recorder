@@ -83,7 +83,7 @@ class BrowserServerTests(unittest.TestCase):
         self.assertEqual(self.request("/api/recordings/saved.mkv/download")[2], b"saved recording")
 
     def test_offline_page_assets_and_cross_site_preparation_protection(self):
-        for route_path in ("/", "/app.js", "/styles.css"):
+        for route_path in ("/", "/app.js", "/live_rotation.js", "/styles.css"):
             with self.subTest(route_path=route_path):
                 self.assertEqual(self.request(route_path)[0], 200)
         self.assertEqual(self.request("/api/recordings/saved.mkv/prepare", "POST",

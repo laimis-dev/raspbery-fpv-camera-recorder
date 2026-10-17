@@ -7,6 +7,7 @@
   <title>FPV Recorder</title>
   <link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
+  <script src="/live_rotation.js" defer></script>
 </head>
 <body>
   <header>
@@ -24,6 +25,13 @@
         <video id="playback-video" controls playsinline preload="metadata" hidden></video>
         <div id="viewer-message" class="viewer-message" role="status">Waiting for camera…</div>
         <span id="live-badge" class="live-badge">LIVE</span>
+      </div>
+      <div id="live-rotation-controls" class="rotation-controls" role="group" aria-label="Live preview rotation">
+        <label for="live-rotation-angle">Rotation <output id="live-rotation-value" for="live-rotation-angle">0°</output></label>
+        <input id="live-rotation-angle" type="range" min="-180" max="180" step="1" value="0" aria-label="Live preview angle in degrees">
+        <button id="rotate-left-button" class="secondary" aria-label="Rotate live preview left 90 degrees">↶ 90°</button>
+        <button id="rotate-right-button" class="secondary" aria-label="Rotate live preview right 90 degrees">↷ 90°</button>
+        <button id="reset-rotation-button" class="secondary">Reset</button>
       </div>
       <p id="viewer-caption" class="muted">Live preview has no sound. Saved recordings include microphone audio.</p>
       <p id="capture-message" class="notice" role="status"></p>

@@ -28,6 +28,7 @@ function returnToLive() {
   playbackVideo.load();
   playbackVideo.hidden = true;
   livePreview.hidden = false;
+  element("live-rotation-controls").hidden = false;
   livePreview.src = `/live.mjpg?reconnect=${Date.now()}`;
   element("live-button").hidden = true;
   element("live-badge").hidden = false;
@@ -42,6 +43,7 @@ async function selectRecording(filename) {
   playbackVideo.pause();
   playbackVideo.hidden = true;
   livePreview.hidden = true;
+  element("live-rotation-controls").hidden = true;
   livePreview.removeAttribute("src");
   element("live-button").hidden = false;
   element("live-badge").hidden = true;

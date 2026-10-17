@@ -19,6 +19,7 @@ STATIC_DIRECTORY_PATH = Path(__file__).parent / "static"
 STATIC_ROUTES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/live_rotation.js": ("live_rotation.js", "text/javascript; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
 }
 

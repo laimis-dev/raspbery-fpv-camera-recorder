@@ -54,6 +54,10 @@ still require the target hardware.
 
 - **Live view** shows video from the same camera capture process used for
   recording. It has no live audio. Saved recordings include microphone audio.
+- **Rotation** below the live view adjusts the preview from −180° to +180° in
+  1° steps, with left/right 90° buttons and Reset. The whole rotated picture
+  fits inside the viewer. Each browser remembers its angle; recording and replay
+  keep the camera's original orientation.
 - **Replay** prepares a browser-compatible WebM copy of a selected finished
   recording, then opens it with playback, sound, and seeking controls. Long
   recordings take longer to prepare. Further replays reuse the cached copy.
