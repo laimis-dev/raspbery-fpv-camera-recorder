@@ -13,9 +13,9 @@ class Settings:
     audio_device_name: str = "default"
     video_resolution: str = "640x480"
     video_frame_rate_fps: int = 25
-    recording_video_quality_crf: int = 23
-    recording_video_max_bitrate_bits_per_second: int = 1_500_000
-    recording_audio_bitrate_bits_per_second: int = 96_000
+    recording_video_quality_crf: int = 18
+    recording_video_max_bitrate_bits_per_second: int = 6_000_000
+    recording_audio_bitrate_bits_per_second: int = 128_000
     recordings_directory_path: Path = Path(__file__).resolve().parents[1] / "recordings"
     ffmpeg_executable: str = "ffmpeg"
     shutdown_timeout_seconds: float = 15.0

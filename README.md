@@ -87,7 +87,7 @@ preserved and listed if nonempty, but may not be playable.
 The defaults in `recorder/config.py` request `/dev/video0`, MJPEG video at
 **640x480 and PAL's 25 fps**, and the system's default microphone. Saved video
 is compressed to H.264 using `libx264`, the `veryfast` preset, and two encoder
-threads. Audio uses AAC at 96 kbit/s. The live preview still copies the original
+threads. Audio uses AAC at 128 kbit/s. The live preview still copies the original
 MJPEG frames from the same capture process. Close OBS or deactivate its camera
 source before starting the recorder.
 
@@ -95,15 +95,17 @@ Recording compression settings are also in `recorder/config.py`:
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| `recording_video_quality_crf` | `23` | Lower values give higher quality and larger files; higher values reduce size. |
-| `recording_video_max_bitrate_bits_per_second` | `1_500_000` | Limits video bitrate using a two-second buffer; complex scenes may lose detail to fit. |
-| `recording_audio_bitrate_bits_per_second` | `96_000` | Microphone audio bitrate. |
+| `recording_video_quality_crf` | `18` | Favors detail over small files. Lower values give higher quality and larger files; higher values reduce size. |
+| `recording_video_max_bitrate_bits_per_second` | `6_000_000` | Limits video bitrate using a two-second buffer; complex scenes may lose detail to fit. |
+| `recording_audio_bitrate_bits_per_second` | `128_000` | Microphone audio bitrate. |
 
-At the video bitrate limit, allow roughly **720 MB per hour** including audio,
+At the video bitrate limit, allow roughly **2.8 GB per hour** including audio,
 plus container overhead. Simpler scenes usually use less; this is an estimate,
 not a fixed file-size guarantee. Compression is lossy and adds CPU work. Sustained
 25 fps with live viewing and replay preparation still needs validation on the
-Pi 4. Existing recordings are not recompressed or deleted. Rebuild the Pi image
+Pi 4. These defaults replace the more aggressive CRF 23 / 1.5 Mbit/s settings.
+They keep compression while giving moving, noisy scenes more bitrate. Existing
+recordings are not recompressed or deleted. Rebuild the Pi image
 with `make image` and install it to deploy these defaults.
 
 640x480 is the highest resolution advertised by the connected ARKMICRO USB DVR.
@@ -121,7 +123,17 @@ sudo apt install python3 ffmpeg make
 Use an FFmpeg build with MJPEG decoding, `libx264`/AAC encoding for recording, and `libvpx`/`libopus`
 encoders for replay; the Nix package supplies these. Set `audio_device_name` to
 the microphone's ALSA identifier if it is not the default. The Nix service uses
-`plughw:CARD=CAMERA,DEV=0` directly without a desktop audio server.
+`plughw:CARD=LAV,DEV=0` directly without a desktop audio server. The service's udev rule
+names the Ugreen adapter (C-Media USB ID `0d8c:0014`, identified in the Pi's logs)
+`LAV`, regardless of its USB port or card number. The DVR's `CAMERA` audio input
+is not the separate lav microphone. If the Ugreen adapter is absent, capture
+retries rather than silently recording from another input.
+
+Connect the lav to the adapter's microphone/headset input. After installing the
+updated image, record a short speech sample and listen to a downloaded MKV or
+browser replay; live preview has no sound. Check capture mute/gain and the
+microphone's connector compatibility if the correctly selected input is still
+silent. The input selection fix does not establish the microphone's signal level.
 
 Check H.264 encoder availability with `ffmpeg -hide_banner -h encoder=libx264`.
 Some distribution FFmpeg builds omit it; install a build that includes it before

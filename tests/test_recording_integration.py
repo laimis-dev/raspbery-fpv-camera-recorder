@@ -66,7 +66,7 @@ class RecordingTests(unittest.TestCase):
 
             service_environment = {
                 "FPV_RECORDINGS_DIRECTORY_PATH": str(recordings_directory_path),
-                "FPV_AUDIO_DEVICE_NAME": "plughw:CARD=CAMERA,DEV=0",
+                "FPV_AUDIO_DEVICE_NAME": "plughw:CARD=LAV,DEV=0",
                 "FPV_WEB_PORT": "0",
                 "PATH": os.environ.get("PATH", os.defpath),
             }
@@ -82,7 +82,7 @@ class RecordingTests(unittest.TestCase):
             self.assertEqual(streams_by_type["video"]["r_frame_rate"], "25/1")
             self.assertEqual(int(streams_by_type["video"]["nb_read_packets"]), 25)
 
-    def test_compression_reduces_size_without_losing_frames_or_audio(self):
+    def test_compression_preserves_detail_frames_and_audio_with_smaller_files(self):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
             output_path = Path(temporary_directory_path) / "compressed.mkv"
             command_builder = SyntheticCommandBuilder(
@@ -96,13 +96,36 @@ class RecordingTests(unittest.TestCase):
             self.assertEqual(streams_by_type["video"]["height"], 480)
             self.assertEqual(streams_by_type["video"]["r_frame_rate"], "25/1")
             # Compare against the same camera frames in the former MJPEG/AAC format.
-            baseline_path = Path(temporary_directory_path) / "uncompressed-camera-copy.mkv"
+            baseline_path = Path(temporary_directory_path) / "mjpeg-camera-copy.mkv"
             subprocess.run([
                 "ffmpeg", "-v", "error", "-stream_loop", "-1", "-i", str(self.video_fixture_path),
                 "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "3",
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", str(baseline_path),
             ], check=True, timeout=10)
-            self.assertLess(output_path.stat().st_size, baseline_path.stat().st_size * 0.6)
+            self.assertLess(output_path.stat().st_size, baseline_path.stat().st_size * 0.85)
+
+            # Compare decoded detail with the previous, more aggressive defaults.
+            aggressive_output_path = Path(temporary_directory_path) / "aggressive-compression.mkv"
+            aggressive_command_builder = SyntheticCommandBuilder(
+                replace(command_builder.recording_settings, recording_video_quality_crf=23,
+                        recording_video_max_bitrate_bits_per_second=1_500_000,
+                        recording_audio_bitrate_bits_per_second=96_000), duration_seconds=3,
+            )
+            aggressive_command = aggressive_command_builder.build_recording_command(aggressive_output_path)
+            subprocess.run([argument for argument in aggressive_command if argument != "-re"],
+                           check=True, timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+            def measure_video_similarity(recording_path):
+                comparison_result = subprocess.run([
+                    "ffmpeg", "-hide_banner", "-i", str(recording_path), "-i", str(self.video_fixture_path),
+                    "-filter_complex", "[0:v]setpts=PTS-STARTPTS[encoded];"
+                    "[1:v]setpts=PTS-STARTPTS[reference];[encoded][reference]ssim=shortest=1",
+                    "-an", "-f", "null", "-",
+                ], check=True, timeout=15, capture_output=True, text=True)
+                return float(re.search(r"All:([0-9.]+)", comparison_result.stderr)[1])
+
+            self.assertGreater(measure_video_similarity(output_path),
+                               measure_video_similarity(aggressive_output_path))
 
     def test_ctrl_c_and_sigterm_finalize_recordings(self):
         for shutdown_signal in (signal.SIGINT, signal.SIGTERM):

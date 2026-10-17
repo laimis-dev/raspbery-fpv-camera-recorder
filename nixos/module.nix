@@ -17,6 +17,12 @@ in
   };
 
   config = lib.mkIf recorderConfig.enable {
+    # The Pi's journal identifies the Ugreen lav adapter as C-Media 0d8c:0014.
+    # Name its ALSA card independently of USB port and enumeration order.
+    services.udev.extraRules = ''
+      ACTION=="add", SUBSYSTEM=="sound", KERNEL=="card[0-9]*", ATTRS{idVendor}=="0d8c", ATTRS{idProduct}=="0014", ATTR{id}="LAV"
+    '';
+
     users.groups.fpv-recorder = { };
     users.users.fpv-recorder = {
       isSystemUser = true;
@@ -37,8 +43,8 @@ in
         RequiresMountsFor = [ recorderStateDirectoryPath ];
       };
       environment = {
-        # Select the microphone directly without a desktop audio session.
-        FPV_AUDIO_DEVICE_NAME = "plughw:CARD=CAMERA,DEV=0";
+        # The udev rule names the separate Ugreen microphone adapter LAV.
+        FPV_AUDIO_DEVICE_NAME = "plughw:CARD=LAV,DEV=0";
         FPV_RECORDINGS_DIRECTORY_PATH = "${recorderStateDirectoryPath}/recordings";
         FPV_WEB_BIND_ADDRESS = "0.0.0.0";
         FPV_WEB_PORT = toString browserPort;

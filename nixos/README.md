@@ -178,12 +178,16 @@ The service overrides only deployment details:
 
 | Environment variable | Deployment value |
 | --- | --- |
-| `FPV_AUDIO_DEVICE_NAME` | `plughw:CARD=CAMERA,DEV=0` |
+| `FPV_AUDIO_DEVICE_NAME` | `plughw:CARD=LAV,DEV=0` |
 | `FPV_RECORDINGS_DIRECTORY_PATH` | `/var/lib/fpv-recorder/recordings` |
 | `FPV_WEB_BIND_ADDRESS` | `0.0.0.0` |
 | `FPV_WEB_PORT` | `80` |
 
-If the microphone is a separate USB device, change the ALSA name in `module.nix`.
+The service module's udev rule assigns ALSA name `LAV` to the Ugreen lav adapter
+(C-Media USB ID `0d8c:0014`, confirmed in the Pi's journal). This selects the
+separate microphone rather than the DVR's `CAMERA` input. With the adapter
+missing, capture retries; it does not choose another sound card. For a different
+adapter, update the USB ID rule and ALSA name together.
 `arecord -l` from `alsa-utils` lists audio devices. If video numbering changes,
 set the app's `video_device_path` to a stable `/dev/v4l/by-id/` path. Close other
 apps that hold the camera or ALSA input open.
