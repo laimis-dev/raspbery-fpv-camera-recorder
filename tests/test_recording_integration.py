@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -55,11 +56,23 @@ class RecordingTests(unittest.TestCase):
 
     def test_main_starts_without_arguments_and_saves_both_streams(self):
         with tempfile.TemporaryDirectory() as temporary_directory_path:
-            recording_settings = replace(Settings(), recordings_directory_path=Path(temporary_directory_path) / "recordings", video_device_path=str(self.video_fixture_path))
-            command_builder = SyntheticCommandBuilder(recording_settings, duration_seconds=1)
-            with patch("recorder.cli.Settings.from_environment", return_value=recording_settings), patch("recorder.bootstrap.FFmpegCommandBuilder", return_value=command_builder):
+            recordings_directory_path = Path(temporary_directory_path) / "recordings"
+
+            def create_synthetic_command_builder(recording_settings):
+                return SyntheticCommandBuilder(
+                    replace(recording_settings, video_device_path=str(self.video_fixture_path)),
+                    duration_seconds=1,
+                )
+
+            service_environment = {
+                "FPV_RECORDINGS_DIRECTORY_PATH": str(recordings_directory_path),
+                "FPV_AUDIO_DEVICE_NAME": "plughw:CARD=CAMERA,DEV=0",
+            }
+            with patch.dict(os.environ, service_environment, clear=True), patch(
+                "recorder.bootstrap.FFmpegCommandBuilder", side_effect=create_synthetic_command_builder
+            ):
                 self.assertEqual(cli.main(), 0)
-            recording_paths = list(recording_settings.recordings_directory_path.glob("*.mkv"))
+            recording_paths = list(recordings_directory_path.glob("*.mkv"))
             self.assertEqual(len(recording_paths), 1)
             streams_by_type = self.assert_playable_recording(recording_paths[0])
             self.assertEqual(streams_by_type["video"]["width"], 640)

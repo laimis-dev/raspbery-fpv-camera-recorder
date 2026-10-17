@@ -6,4 +6,3 @@ recordings/
 *.mp4
 result
 result-*
-nixos/hosts/pi4/local-settings.nix

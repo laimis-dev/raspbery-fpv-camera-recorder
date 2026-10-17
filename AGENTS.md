@@ -10,8 +10,13 @@ These guidelines apply to the entire repository.
   menus, or alternate capture paths unless the requested feature needs them.
 - Keep deployment overrides in `Settings.from_environment()`; local runs retain
   their defaults. Configure the boot service through `nixos/module.nix`.
+- Keep capture defaults in the app only. Do not duplicate video device,
+  resolution, or frame-rate defaults as NixOS options. Limit service overrides
+  to deployment needs such as writable storage and headless audio selection.
 - Capture camera video and microphone audio together in one FFmpeg process.
 - Save each session to a new `.mkv` file under the configured recordings directory.
+- Keep the standalone Pi image usable without SSH keys or account setup.
+  SSH is disabled by default; recording starts without a login or network.
 
 ## Architecture and file organization
 
@@ -38,6 +43,8 @@ These guidelines apply to the entire repository.
 
 - Prefer standard-library solutions and explicit constructor dependencies.
   Introduce dependencies and abstractions when a concrete requirement needs them.
+- Keep runtime settings and package metadata in one authoritative place.
+  Derive shared paths and package versions instead of repeating their values.
 - Add type annotations to production function signatures. Keep functions focused
   and document behavior or constraints that are not clear from their names.
 - Use module loggers for application messages. Leave FFmpeg diagnostics visible.
@@ -92,8 +99,8 @@ These guidelines apply to the entire repository.
 - Update `README.md` when commands, settings, module locations, or behavior change.
   Keep Makefile help consistent with its targets.
 - Keep recordings, generated media, and Python caches out of version control.
-- For NixOS changes, evaluate the flake with `make nixos-check` after configuring
-  an administrator public key. Keep dependencies pinned in `flake.lock`.
+- For NixOS changes, evaluate the flake with `make nixos-check`.
+  Keep dependencies pinned in `flake.lock`.
 - Boot recording must use persistent writable storage outside the Nix store and
   named hardware inputs that work without a desktop login. Preserve systemd's
   `KillMode=mixed` and a stop timeout longer than the app's shutdown deadline.

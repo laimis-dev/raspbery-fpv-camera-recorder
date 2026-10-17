@@ -48,6 +48,7 @@ on an existing NixOS Pi and building a complete Pi 4 SD-card image.
 The service starts during boot without a login or network connection, retries
 when capture devices are not ready, and finalizes the recording during a normal
 shutdown. It saves files to `/var/lib/fpv-recorder/recordings`.
+The standalone Pi image has SSH disabled and needs no SSH keys or account setup.
 
 ## Development commands
 
@@ -56,17 +57,20 @@ shutdown. It saves files to `/var/lib/fpv-recorder/recordings`.
 | `make run` | Start recording with the default settings. |
 | `make test` | Run all tests, including FFmpeg integration checks. |
 | `make check` | Check Python syntax. |
-| `make nixos-check` | Evaluate the NixOS configuration after adding an admin SSH key. |
+| `make nixos-check` | Evaluate the NixOS configuration. |
 | `make nixos-image` | Build the Pi 4 SD-card image using an AArch64 builder. |
 | `make clean` | Remove generated Python caches; recordings are preserved. |
 | `make help` | Show available commands. |
 
 To use another interpreter: `make test PYTHON=.venv/bin/python`.
 
-For deployment, `Settings.from_environment()` reads `FPV_VIDEO_DEVICE_PATH`,
-`FPV_AUDIO_DEVICE_NAME`, `FPV_VIDEO_RESOLUTION`, `FPV_VIDEO_FRAME_RATE_FPS`, and
-`FPV_RECORDINGS_DIRECTORY_PATH`. The NixOS module sets these automatically; local
-runs continue to use the defaults in `recorder/config.py`.
+For deployment, `Settings.from_environment()` reads only `FPV_AUDIO_DEVICE_NAME`
+and `FPV_RECORDINGS_DIRECTORY_PATH`. The NixOS service sets the headless ALSA
+microphone and writable recordings directory. Video device, resolution, and
+frame rate come directly from `recorder/config.py` on both the PC and Pi.
+
+Package metadata is defined in `pyproject.toml`; the Nix package reads its
+version from that file.
 
 See [AGENTS.md](AGENTS.md) for architecture, coding, recording lifecycle, and
 validation guidelines.
