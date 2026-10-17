@@ -43,7 +43,7 @@ class RecordingTests(unittest.TestCase):
         ], capture_output=True, text=True, check=True, timeout=10)
         streams_by_type = {stream_metadata["codec_type"]: stream_metadata for stream_metadata in json.loads(probe_result.stdout)["streams"]}
         self.assertEqual(set(streams_by_type), {"video", "audio"})
-        self.assertEqual(streams_by_type["video"]["codec_name"], "mjpeg")
+        self.assertEqual(streams_by_type["video"]["codec_name"], "h264")
         self.assertEqual(streams_by_type["audio"]["codec_name"], "aac")
         for stream_metadata in streams_by_type.values():
             self.assertGreater(int(stream_metadata["nb_read_packets"]), 0)
@@ -81,6 +81,28 @@ class RecordingTests(unittest.TestCase):
             self.assertEqual(streams_by_type["video"]["height"], 480)
             self.assertEqual(streams_by_type["video"]["r_frame_rate"], "25/1")
             self.assertEqual(int(streams_by_type["video"]["nb_read_packets"]), 25)
+
+    def test_compression_reduces_size_without_losing_frames_or_audio(self):
+        with tempfile.TemporaryDirectory() as temporary_directory_path:
+            output_path = Path(temporary_directory_path) / "compressed.mkv"
+            command_builder = SyntheticCommandBuilder(
+                replace(Settings(), video_device_path=str(self.video_fixture_path)), duration_seconds=3,
+            )
+            ffmpeg_recorder = FFmpegRecorder(command_builder, 15)
+            ffmpeg_recorder.record_to_file(output_path, Event())
+            streams_by_type = self.assert_playable_recording(output_path)
+            self.assertEqual(int(streams_by_type["video"]["nb_read_packets"]), 75)
+            self.assertEqual(streams_by_type["video"]["width"], 640)
+            self.assertEqual(streams_by_type["video"]["height"], 480)
+            self.assertEqual(streams_by_type["video"]["r_frame_rate"], "25/1")
+            # Compare against the same camera frames in the former MJPEG/AAC format.
+            baseline_path = Path(temporary_directory_path) / "uncompressed-camera-copy.mkv"
+            subprocess.run([
+                "ffmpeg", "-v", "error", "-stream_loop", "-1", "-i", str(self.video_fixture_path),
+                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "3",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", str(baseline_path),
+            ], check=True, timeout=10)
+            self.assertLess(output_path.stat().st_size, baseline_path.stat().st_size * 0.6)
 
     def test_ctrl_c_and_sigterm_finalize_recordings(self):
         for shutdown_signal in (signal.SIGINT, signal.SIGTERM):

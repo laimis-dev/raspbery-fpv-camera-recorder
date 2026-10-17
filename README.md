@@ -61,9 +61,9 @@ still require the target hardware.
 - **Replay** prepares a browser-compatible WebM copy of a selected finished
   recording, then opens it with playback, sound, and seeking controls. Long
   recordings take longer to prepare. Further replays reuse the cached copy.
-- **Download original** saves the original `.mkv`, preserving the captured
-  video quality. Replay copies use VP8 video and Opus audio; originals retain
-  MJPEG video and AAC audio.
+- **Download original** saves the recorded `.mkv`. New recordings use H.264
+  video and AAC audio; replay copies use VP8 video and Opus audio. Older MJPEG
+  recordings remain available for replay and download.
 - The current recording appears in the library after its session finishes.
   There is no remote stop button; recording continues while you browse.
 - Preparation runs one file at a time with one video encoder thread and lower
@@ -79,9 +79,26 @@ preserved and listed if nonempty, but may not be playable.
 ## Capture settings
 
 The defaults in `recorder/config.py` request `/dev/video0`, MJPEG video at
-**640x480 and PAL's 25 fps**, and the system's default microphone. Video is
-saved without re-encoding; audio is saved as AAC. Close OBS or deactivate its
-camera source before starting the recorder.
+**640x480 and PAL's 25 fps**, and the system's default microphone. Saved video
+is compressed to H.264 using `libx264`, the `veryfast` preset, and two encoder
+threads. Audio uses AAC at 96 kbit/s. The live preview still copies the original
+MJPEG frames from the same capture process. Close OBS or deactivate its camera
+source before starting the recorder.
+
+Recording compression settings are also in `recorder/config.py`:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `recording_video_quality_crf` | `23` | Lower values give higher quality and larger files; higher values reduce size. |
+| `recording_video_max_bitrate_bits_per_second` | `1_500_000` | Limits video bitrate using a two-second buffer; complex scenes may lose detail to fit. |
+| `recording_audio_bitrate_bits_per_second` | `96_000` | Microphone audio bitrate. |
+
+At the video bitrate limit, allow roughly **720 MB per hour** including audio,
+plus container overhead. Simpler scenes usually use less; this is an estimate,
+not a fixed file-size guarantee. Compression is lossy and adds CPU work. Sustained
+25 fps with live viewing and replay preparation still needs validation on the
+Pi 4. Existing recordings are not recompressed or deleted. Rebuild the Pi image
+with `make image` and install it to deploy these defaults.
 
 640x480 is the highest resolution advertised by the connected ARKMICRO USB DVR.
 Measured input frames arrived about 40 ms apart (approximately 25 fps). The
@@ -95,10 +112,14 @@ On Raspberry Pi OS, install the dependencies first:
 sudo apt install python3 ffmpeg make
 ```
 
-Use an FFmpeg build with MJPEG/AAC support for recording and `libvpx`/`libopus`
+Use an FFmpeg build with MJPEG decoding, `libx264`/AAC encoding for recording, and `libvpx`/`libopus`
 encoders for replay; the Nix package supplies these. Set `audio_device_name` to
 the microphone's ALSA identifier if it is not the default. The Nix service uses
 `plughw:CARD=CAMERA,DEV=0` directly without a desktop audio server.
+
+Check H.264 encoder availability with `ffmpeg -hide_banner -h encoder=libx264`.
+Some distribution FFmpeg builds omit it; install a build that includes it before
+running the app. There is no automatic fallback to large MJPEG recordings.
 
 `Settings.from_environment()` supports deployment overrides for
 `FPV_AUDIO_DEVICE_NAME`, `FPV_RECORDINGS_DIRECTORY_PATH`, `FPV_WEB_BIND_ADDRESS`,

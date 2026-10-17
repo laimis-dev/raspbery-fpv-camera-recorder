@@ -168,6 +168,9 @@ The web listener can start before `wlan0` receives its address.
 
 The module exposes service enablement and package selection. Capture defaults
 come from `recorder/config.py`: `/dev/video0`, MJPEG 640x480, requested PAL 25 fps.
+Saved video is compressed to H.264, with AAC microphone audio in MKV. The app's
+compression defaults control recording size; see the project README for tuning
+and storage estimates. Live preview continues using the original MJPEG frames.
 Change the app and rebuild for another capture mode. See the
 [project README](../README.md) for measured hardware limits.
 

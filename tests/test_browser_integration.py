@@ -32,7 +32,8 @@ class BrowserIntegrationTests(unittest.TestCase):
             subprocess.run([
                 "ffmpeg", "-v", "error", "-i", str(video_fixture_path),
                 "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
-                "-t", "1", "-c:v", "copy", "-c:a", "aac", str(saved_recording_path),
+                "-t", "1", "-c:v", "libx264", "-preset", "veryfast", "-threads:v", "2",
+                "-pix_fmt", "yuv420p", "-c:a", "aac", str(saved_recording_path),
             ], check=True, timeout=10)
             original_recording_bytes = saved_recording_path.read_bytes()
             recording_settings = Settings(video_device_path=str(video_fixture_path),
