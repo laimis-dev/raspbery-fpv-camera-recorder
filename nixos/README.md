@@ -1,74 +1,71 @@
-# Raspberry Pi 4: record automatically at boot
+# Raspberry Pi 4: boot recording and offline Wi-Fi
 
-The NixOS service runs the same app as `make run`, using Python and FFmpeg from
-the Nix store. It starts when the system reaches `multi-user.target`, without a
-login, desktop, or network dependency. Recording begins as soon as the USB video
-and audio inputs are usable. Failed capture is retried every two seconds,
-including when devices are connected after boot or reconnect after a failure.
+The NixOS image starts the recorder, browser page, and a WPA2 Wi-Fi hotspot at
+boot, without a desktop, SSH keys, login, router, or internet connection.
 
-Recordings are owned by the `fpv-recorder` system user and stored persistently in
-`/var/lib/fpv-recorder/recordings`. Each restart creates a new file. A normal
-shutdown sends SIGTERM to Python, which asks FFmpeg to finalize the recording.
-systemd allows 20 seconds for shutdown; the app's own deadline is 15 seconds.
-Power removal cannot perform graceful finalization.
+1. Power the Pi with its USB capture adapter and microphone connected.
+2. Connect to Wi-Fi **`FPV-Recorder`**, password **`12345678`**.
+3. Stay connected if your device reports **no internet**.
+4. Open **http://192.168.4.1** to watch live video, replay finished sessions,
+   or download original recordings.
+
+The optional local DNS name is `http://recorder.lan`; the IP address also works
+when your browser uses its own DNS service. This is an offline access point,
+with no internet forwarding or automatic captive-portal page.
 
 ## Existing NixOS installation
 
-Run these commands from a checkout of this project **on the Pi**:
+From a checkout **on the Pi**, copy the app and deployment files:
 
 ```sh
 sudo mkdir -p /etc/nixos/fpv-recorder
 sudo cp -r main.py pyproject.toml recorder nixos /etc/nixos/fpv-recorder/
 ```
 
-Add the module to the existing `imports` in `/etc/nixos/configuration.nix`, keeping
-the other imports and machine configuration:
+Add these imports to `/etc/nixos/configuration.nix`, preserving its other
+imports and machine-specific settings:
 
 ```nix
 {
   imports = [
     ./hardware-configuration.nix
     ./fpv-recorder/nixos/module.nix
+    ./fpv-recorder/nixos/hosts/pi4/hotspot.nix
   ];
 
   services.fpv-recorder.enable = true;
 }
 ```
 
-Apply the configuration:
+The hotspot dedicates `wlan0` to access-point mode, disables Wi-Fi client
+management and NetworkManager, and uses static address `192.168.4.1/24`. Resolve
+any existing Wi-Fi-manager or addressing configuration for that interface before
+merging this into an already customized installation. Ethernet can still use
+DHCP. The standalone image already includes these settings.
+
+Edit `hosts/pi4/hotspot.nix` for the SSID, password, and Wi-Fi
+country code (`LT`, Lithuania). Credentials are included in the built image's
+Nix store. There is no separate local settings file. For different Pi locations,
+use the country code for where the radio operates.
+
+Apply your configuration:
 
 ```sh
 sudo nixos-rebuild switch
 ```
 
-The service starts immediately and on subsequent boots. Existing flake-based
-systems can import `nixosModules.default` from this project's flake instead; use
-their normal rebuild command and retain their machine configuration.
-
-The module exposes only service enablement and the package to run. The app's
-`recorder/config.py` supplies the video device, resolution, and frame rate:
-`/dev/video0`, 640x480, and a requested 25 fps. Change those defaults in the app
-and rebuild to use a different capture mode; there is no second set in NixOS.
-
-Two service environment values account for the deployment: the writable
-recordings directory and `FPV_AUDIO_DEVICE_NAME=plughw:CARD=CAMERA,DEV=0`.
-The microphone override opens the USB input directly without a desktop's audio
-server. If your microphone is a separate USB device, change that value in
-`nixos/module.nix` to its ALSA name. Check names with `arecord -l` (provided by
-`alsa-utils`). Close other apps that hold the camera or ALSA input open.
-
-If the video device number changes, set `video_device_path` in the app to the
-appropriate stable `/dev/v4l/by-id/` path.
-
-See the [project README](../README.md) for measured capture-device limits.
+The service starts immediately and on subsequent boots. A flake-based existing
+system can import this project's `nixosModules.default` and the hotspot file
+instead, using its normal rebuild command and retaining its machine configuration.
+The recorder module alone starts recording and HTTP but does not change Wi-Fi
+management; the hotspot module supplies the wireless network.
 
 ## New SD card
 
-`flake.nix` also defines `nixosConfigurations.fpv-recorder`, a Pi 4 image based on
-NixOS 26.05's official generic AArch64 SD-image module. It includes the recorder,
-boot service, USB camera/audio drivers, and Ethernet DHCP. SSH is disabled. No
-SSH key, local settings file, or administrator account setup is required to
-build the image or start recording.
+`flake.nix` defines `nixosConfigurations.fpv-recorder` using NixOS 26.05's
+official generic AArch64 SD-image module. It includes Pi 4 boot firmware, USB
+camera/audio support, the recorder, HTTP service, hotspot, and Ethernet DHCP.
+SSH is disabled; no administrator account setup is required to start recording.
 
 On an AArch64 Linux builder with Nix and flakes enabled:
 
@@ -77,74 +74,100 @@ make nixos-check
 make nixos-image
 ```
 
-An x86 Linux machine needs an AArch64 remote builder or configured AArch64
-emulation to build the image. Selecting an architecture alone does not provide
-that builder. Nix pins dependencies in `flake.lock`.
+An x86 Linux builder needs an AArch64 remote builder or configured AArch64
+emulation. Selecting an architecture does not provide a builder. Dependencies
+are pinned in `flake.lock`.
 
-The image is under `result/sd-image/` as an `.img.zst` file. Decompress it with
+The image is under `result/sd-image/` as an `.img.zst`. Decompress it with
 `zstd -d`, then use Raspberry Pi Imager's **Use custom** option to write the `.img`
-to the intended SD card. Writing an image erases that card. This repository has
-no automatic flashing target.
+to the intended SD card. Writing the image erases that card. There is no automatic
+flashing target.
 
-Insert the card into the Pi 4, connect the capture adapter and microphone, and
-power it on. The first boot expands the root partition to fill the card. The
-recorder starts automatically. You do not need to connect to the Pi or log in.
+Insert the card and power on. The first boot expands the root partition to fill
+the card. The Pi must already support booting from microSD; this configuration
+does not update its EEPROM. Recording does not wait for Wi-Fi to be ready.
+The web listener can start before `wlan0` receives its address.
 
-The configuration prepares the image; it does not update the Pi's EEPROM.
-Use a Pi 4 that can already boot from microSD. Physical Pi boot and USB capture
-still need validation on the target hardware.
+## Service and capture configuration
 
-## Retrieve recordings without SSH
+The module exposes service enablement and package selection. Capture defaults
+come from `recorder/config.py`: `/dev/video0`, MJPEG 640x480, requested PAL 25 fps.
+Change the app and rebuild for another capture mode. See the
+[project README](../README.md) for measured hardware limits.
 
-After shutting down the Pi, put its SD card in a Linux computer and mount the
-ext4 root partition. Recordings are under `var/lib/fpv-recorder/recordings` on
-that partition. Copy them using administrator permissions if necessary. The
-small FAT boot partition does not contain the recordings.
+The service overrides only deployment details:
 
-## Manage the service from a local console
+| Environment variable | Deployment value |
+| --- | --- |
+| `FPV_AUDIO_DEVICE_NAME` | `plughw:CARD=CAMERA,DEV=0` |
+| `FPV_RECORDINGS_DIRECTORY_PATH` | `/var/lib/fpv-recorder/recordings` |
+| `FPV_WEB_BIND_ADDRESS` | `0.0.0.0` |
+| `FPV_WEB_PORT` | `80` |
 
-These commands apply when a local administrator login is available, such as on
-an existing NixOS installation. The standalone image does not provision an
-administrator account.
+If the microphone is a separate USB device, change the ALSA name in `module.nix`.
+`arecord -l` from `alsa-utils` lists audio devices. If video numbering changes,
+set the app's `video_device_path` to a stable `/dev/v4l/by-id/` path. Close other
+apps that hold the camera or ALSA input open.
+
+The service runs as `fpv-recorder`, with video/audio group access and only the
+capability required to bind HTTP port 80. Its writable state is outside the Nix
+store. The firewall opens HTTP on `wlan0`; the hotspot opens DHCP and local DNS
+on that interface. There is no browser login: connected hotspot clients can
+view and download recordings. Assets and playback work without external sites.
+
+Capture retries every two seconds while browser access remains available.
+systemd restarts unexpected app exits. Files persist between restarts, with a
+new `.mkv` for every capture session. Normal shutdown sends SIGTERM to Python,
+which asks FFmpeg to finalize. systemd allows 25 seconds for capture and the
+background services to stop; capture's deadline is 15 seconds. Power removal
+cannot finalize recordings gracefully.
+
+## Storage and local management
+
+Recordings and `.playback-cache/` are under `/var/lib/fpv-recorder/recordings`.
+Replay creates a VP8/Opus WebM copy without changing the original. A single,
+lower-priority conversion runs at a time; first playback of long sessions may
+take time. Playback copies consume extra disk space. No recordings or completed
+playback copies are automatically deleted. When storage fills, recording fails
+and retries until space is available. Failed nonempty recordings remain visible
+for download but might not play.
+
+For external storage, mount it at `/var/lib/fpv-recorder` with a normal NixOS
+`fileSystems` entry. The service waits for that mount. To retrieve originals
+without the hotspot, shut down the Pi and mount its SD card's ext4 root partition
+on Linux; files are under `var/lib/fpv-recorder/recordings`. They are not on the
+small FAT boot partition.
+
+When a local administrator login is available, use:
 
 ```sh
 sudo systemctl status fpv-recorder
 sudo journalctl -u fpv-recorder -f
-sudo ls -lh /var/lib/fpv-recorder/recordings
-```
-
-Stop recording and finalize the current file:
-
-```sh
 sudo systemctl stop fpv-recorder
-```
-
-Start again, or power down the Pi cleanly:
-
-```sh
 sudo systemctl start fpv-recorder
 sudo systemctl poweroff
 ```
 
-`systemctl stop` keeps it stopped until started again or rebooted. To disable
-future boot recording, set `services.fpv-recorder.enable = false` and rebuild.
-
-Storage uses the SD card by default. For external storage, mount it at
-`/var/lib/fpv-recorder` with a normal NixOS `fileSystems` entry; the service waits
-for the configured mount. Recordings are not rotated or deleted automatically.
-When storage fills, capture fails and the service retries; free space before
-expecting it to resume. Failed recordings remain available for recovery.
+`stop` finalizes recording and stops the page until the service starts again.
+The standalone image does not provision an administrator account. Disabling
+`services.fpv-recorder.enable` stops future boot recording; remove the hotspot
+import separately if you also want to disable its Wi-Fi network.
 
 ## Files and validation
 
-- `package.nix`: read version metadata from `pyproject.toml`, package the app,
-  and wrap it with Python/FFmpeg.
-- `module.nix`: boot service, headless audio selection, permissions, and state storage.
-- `hosts/pi4/default.nix`: standalone Pi 4 SD-image configuration with SSH disabled.
-- `../flake.nix`: pinned package/module/image entry points.
+- `package.nix`: package Python code and offline web assets, wrapping Python/FFmpeg.
+- `module.nix`: boot service, headless audio, HTTP, permissions, and storage.
+- `hosts/pi4/default.nix`: standalone Pi image with SSH disabled.
+- `hosts/pi4/hotspot.nix`: Wi-Fi radio, credentials, DHCP, DNS, and hotspot firewall.
+- `../flake.nix`: pinned package, module, and image entry points.
 
-Run `make test` and `make check` for the app, and `make nixos-check` to evaluate
-the NixOS configuration. Evaluation does not build an image or prove it boots.
+Run `make test`, `make check`, and `make nixos-check`. Generated-media tests
+exercise shared live capture, recorded audio/video, and replay without hardware.
+Nix evaluation validates module options and derivations; it does not build an SD
+image or prove Pi boot, hotspot connectivity, or Pi capture/conversion performance.
+Those require target-hardware validation.
 
-Reference: [official Pi 4 installation documentation](https://wiki.nixos.org/wiki/NixOS_on_ARM/Raspberry_Pi_4)
-and [NixOS service configuration](https://nixos.org/manual/nixos/stable/#sec-systemd-state).
+References: [official Pi 4 installation documentation](https://wiki.nixos.org/wiki/NixOS_on_ARM/Raspberry_Pi_4),
+[NixOS hostapd module](https://github.com/NixOS/nixpkgs/blob/nixos-26.05/nixos/modules/services/networking/hostapd.nix),
+[NixOS dnsmasq module](https://github.com/NixOS/nixpkgs/blob/nixos-26.05/nixos/modules/services/networking/dnsmasq.nix),
+and [FFmpeg's libvpx encoder](https://ffmpeg.org/ffmpeg-codecs.html#libvpx).

@@ -67,6 +67,8 @@ class RecordingTests(unittest.TestCase):
             service_environment = {
                 "FPV_RECORDINGS_DIRECTORY_PATH": str(recordings_directory_path),
                 "FPV_AUDIO_DEVICE_NAME": "plughw:CARD=CAMERA,DEV=0",
+                "FPV_WEB_PORT": "0",
+                "PATH": os.environ.get("PATH", os.defpath),
             }
             with patch.dict(os.environ, service_environment, clear=True), patch(
                 "recorder.bootstrap.FFmpegCommandBuilder", side_effect=create_synthetic_command_builder
@@ -92,7 +94,7 @@ from unittest.mock import patch
 from tests.recording_fixtures import SyntheticCommandBuilder
 from recorder.config import Settings
 from recorder import cli
-recording_settings = Settings(video_device_path={str(self.video_fixture_path)!r}, recordings_directory_path=Path({str(recordings_directory_path)!r}))
+recording_settings = Settings(video_device_path={str(self.video_fixture_path)!r}, recordings_directory_path=Path({str(recordings_directory_path)!r}), web_port=0)
 with patch("recorder.cli.Settings.from_environment", return_value=recording_settings), patch("recorder.bootstrap.FFmpegCommandBuilder", SyntheticCommandBuilder):
     raise SystemExit(cli.main())
 '''
@@ -129,11 +131,13 @@ with patch("recorder.cli.Settings.from_environment", return_value=recording_sett
             def build_recording_command(self, output_path):
                 ffmpeg_command = super().build_recording_command(output_path)
                 ffmpeg_command[ffmpeg_command.index("-n")] = "-y"
+                ffmpeg_command[ffmpeg_command.index(str(output_path))] = "/dev/full"
                 return ffmpeg_command
         command_builder = FullDiskCommandBuilder(replace(Settings(), video_device_path=str(self.video_fixture_path)), duration_seconds=0.1)
         ffmpeg_recorder = FFmpegRecorder(command_builder, 15)
-        with self.assertRaises(RecordingError):
-            ffmpeg_recorder.record_to_file(Path("/dev/full"), Event())
+        with tempfile.TemporaryDirectory() as temporary_directory_path:
+            with self.assertRaises(RecordingError):
+                ffmpeg_recorder.record_to_file(Path(temporary_directory_path) / "capture.mkv", Event())
 
 
 if __name__ == "__main__":

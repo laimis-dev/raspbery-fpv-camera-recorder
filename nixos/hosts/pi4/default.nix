@@ -2,7 +2,10 @@
 
 {
   # The official generic AArch64 image includes Raspberry Pi 4 boot firmware.
-  imports = [ "${modulesPath}/installer/sd-card/sd-image-aarch64.nix" ];
+  imports = [
+    "${modulesPath}/installer/sd-card/sd-image-aarch64.nix"
+    ./hotspot.nix
+  ];
 
   nixpkgs.hostPlatform = "aarch64-linux";
   networking.hostName = "fpv-recorder";

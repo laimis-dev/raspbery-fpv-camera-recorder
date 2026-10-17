@@ -26,4 +26,5 @@ class FFmpegCommandBuilder:
             "-map", "0:v:0", "-map", "1:a:0",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
             "-af", "aresample=async=1", "-f", "matroska", str(output_path),
+            "-map", "0:v:0", "-c:v", "copy", "-f", "mpjpeg", "pipe:1",
         ]

@@ -17,6 +17,10 @@ These guidelines apply to the entire repository.
 - Save each session to a new `.mkv` file under the configured recordings directory.
 - Keep the standalone Pi image usable without SSH keys or account setup.
   SSH is disabled by default; recording starts without a login or network.
+- Start the browser interface with the recorder. Keep it available during capture
+  retries so finished recordings remain accessible when a device is unplugged.
+- Configure the Pi's offline Wi-Fi hotspot in `nixos/hosts/pi4/hotspot.nix`.
+  Keep radio, DHCP, and firewall configuration outside the Python app.
 
 ## Architecture and file organization
 
@@ -38,6 +42,9 @@ These guidelines apply to the entire repository.
 - Keep OS signal handling in `recorder/signals.py`. Pass a shared stop event to
   the recording backend instead of installing signal handlers inside services.
 - Keep package `__init__.py` files free of startup work and device access.
+- Keep HTTP routes and offline assets in `recorder/web/`, latest-frame buffering
+  and parsing in `recorder/live/`, and playback preparation in its own service
+  and FFmpeg adapter. Connect shared recording status in `bootstrap.py`.
 
 ## Implementation conventions
 
@@ -81,6 +88,15 @@ These guidelines apply to the entire repository.
 - Report success only after capture returns successfully and storage confirms a
   nonempty output file. This check does not establish signal quality or A/V sync.
 - Preserve partial recordings after failures. Cache cleanup must not delete media.
+- Derive live frames from the existing capture process. Never open the camera
+  again for a browser viewer. Drain preview output even without viewers; keep
+  only the latest frame so a slow client cannot stall recording.
+- Exclude the active recording from replay and downloads. Confine browser file
+  access to regular completed recording files; reject traversal and symlinks.
+- Prepare browser replay copies on demand with one low-priority conversion at a
+  time. Publish cache files only after successful conversion; preserve originals
+  and kill/reap conversion children during shutdown. Support HTTP byte ranges
+  for seeking. Keep all browser assets local for offline use.
 
 ## Validation and documentation
 
@@ -107,3 +123,6 @@ These guidelines apply to the entire repository.
 - Do not claim a configuration boots on the Pi based only on Nix evaluation or
   generated-media tests. Report image-build and target-hardware validation
   separately.
+- Cover shared live capture, replay audio/video, byte ranges, file access, and
+  conversion failure/shutdown with device-independent tests. Validate browser
+  behavior separately from physical Wi-Fi and target-device performance.

@@ -25,7 +25,7 @@ clean:
 
 help:
 	@printf '%s\n' \
-	  'make run    Start recording (also the default for make)' \
+	  'make run    Start recording and the browser page (also the default for make)' \
 	  'make test   Run all tests' \
 	  'make check  Check Python syntax' \
 	  'make nixos-check  Evaluate the NixOS configuration' \

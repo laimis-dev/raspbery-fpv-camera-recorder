@@ -4,6 +4,7 @@ let
   recorderConfig = config.services.fpv-recorder;
   recorderStateDirectoryName = "fpv-recorder";
   recorderStateDirectoryPath = "/var/lib/${recorderStateDirectoryName}";
+  browserPort = 80;
 in
 {
   options.services.fpv-recorder = {
@@ -23,6 +24,8 @@ in
       extraGroups = [ "video" "audio" ];
     };
 
+    networking.firewall.interfaces.wlan0.allowedTCPPorts = [ browserPort ];
+
     systemd.services.fpv-recorder = {
       description = "FPV camera and microphone recorder";
       wantedBy = [ "multi-user.target" ];
@@ -37,6 +40,8 @@ in
         # Select the microphone directly without a desktop audio session.
         FPV_AUDIO_DEVICE_NAME = "plughw:CARD=CAMERA,DEV=0";
         FPV_RECORDINGS_DIRECTORY_PATH = "${recorderStateDirectoryPath}/recordings";
+        FPV_WEB_BIND_ADDRESS = "0.0.0.0";
+        FPV_WEB_PORT = toString browserPort;
         PYTHONUNBUFFERED = "1";
       };
       serviceConfig = {
@@ -51,9 +56,11 @@ in
         # Signal Python first; it asks FFmpeg to finalize before exiting.
         KillMode = "mixed";
         KillSignal = "SIGTERM";
-        TimeoutStopSec = "20s";
+        TimeoutStopSec = "25s";
         UMask = "0027";
         NoNewPrivileges = true;
+        AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
+        CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
         ProtectSystem = "strict";
         ProtectHome = true;
         PrivateTmp = true;

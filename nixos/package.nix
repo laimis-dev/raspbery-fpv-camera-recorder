@@ -12,6 +12,7 @@ stdenvNoCC.mkDerivation {
     fileset = lib.fileset.unions [
       ../main.py
       (lib.fileset.fileFilter (sourceFile: sourceFile.hasExt "py") ../recorder)
+      ../recorder/web/static
     ];
   };
 

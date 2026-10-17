@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>FPV Recorder</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">FPV <span>RECORDER</span></a>
+    <span id="connection-status" class="status">Connecting…</span>
+  </header>
+  <main>
+    <section aria-labelledby="viewer-heading" class="viewer-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">YOUR CAMERA</p><h1 id="viewer-heading">Live view</h1></div>
+        <button id="live-button" class="secondary" hidden>Back to live</button>
+      </div>
+      <div class="viewer">
+        <img id="live-preview" src="/live.mjpg" alt="Live camera video">
+        <video id="playback-video" controls playsinline preload="metadata" hidden></video>
+        <div id="viewer-message" class="viewer-message" role="status">Waiting for camera…</div>
+        <span id="live-badge" class="live-badge">LIVE</span>
+      </div>
+      <p id="viewer-caption" class="muted">Live preview has no sound. Saved recordings include microphone audio.</p>
+      <p id="capture-message" class="notice" role="status"></p>
+    </section>
+    <section aria-labelledby="recordings-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">ON THIS RECORDER</p><h2 id="recordings-heading">Saved recordings <span id="recording-count"></span></h2></div>
+        <button id="refresh-button" class="secondary">Refresh</button>
+      </div>
+      <p class="muted">The current session appears here after recording stops. The first replay creates a playback copy; longer recordings take longer to prepare.</p>
+      <p id="library-message" role="status" class="muted">Loading recordings…</p>
+      <ul id="recordings-list" class="recordings-list"></ul>
+    </section>
+  </main>
+  <footer>Stored on your Raspberry Pi · No internet needed</footer>
+</body>
+</html>
