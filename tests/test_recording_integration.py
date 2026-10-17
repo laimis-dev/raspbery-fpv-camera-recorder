@@ -171,6 +171,89 @@ with patch("recorder.cli.Settings.from_environment", return_value=recording_sett
                 ffmpeg_recorder.record_to_file(output_path, Event())
             self.assertEqual(output_path.read_bytes(), b"existing recording")
 
+    def test_abrupt_process_death_keeps_recent_decodable_audio_and_video(self):
+        # SIGKILL removes FFmpeg/Python buffers, but leaves Linux's page cache
+        # intact. This is a crash-recovery check, not a physical power-cut test.
+        with tempfile.TemporaryDirectory() as temporary_directory_path:
+            media_directory_path = Path(temporary_directory_path)
+            output_path = media_directory_path / "interrupted.mkv"
+            capture_log_path = media_directory_path / "capture.log"
+            ffmpeg_pid_path = media_directory_path / "ffmpeg.pid"
+            sync_log_path = media_directory_path / "sync.log"
+            capture_script = f'''
+from pathlib import Path
+from threading import Event
+from unittest.mock import patch
+import subprocess
+from recorder.config import Settings
+from recorder.ffmpeg.ffmpeg_recorder import FFmpegRecorder
+from recorder.live.frame_buffer import LiveFrameBuffer
+from recorder.storage.recording_file_syncer import RecordingFileSyncer
+from tests.recording_fixtures import SyntheticCommandBuilder
+real_popen = subprocess.Popen
+def launch_capture(*args, **kwargs):
+    capture_process = real_popen(*args, **kwargs)
+    Path({str(ffmpeg_pid_path)!r}).write_text(str(capture_process.pid))
+    return capture_process
+class ObservedRecordingSyncer(RecordingFileSyncer):
+    def _sync_recording_file(self, output_path):
+        super()._sync_recording_file(output_path)
+        if output_path.exists():
+            with Path({str(sync_log_path)!r}).open("a") as sync_log:
+                sync_log.write(str(output_path.stat().st_size) + "\\n")
+settings = Settings(video_device_path={str(self.video_fixture_path)!r})
+recorder = FFmpegRecorder(SyntheticCommandBuilder(settings), 15, LiveFrameBuffer(),
+    ObservedRecordingSyncer(settings.recording_sync_interval_seconds,
+                           settings.recording_sync_shutdown_timeout_seconds))
+with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", side_effect=launch_capture):
+    recorder.record_to_file(Path({str(output_path)!r}), Event())
+'''
+            ffmpeg_pid = None
+            with capture_log_path.open("w") as capture_log:
+                capture_process = subprocess.Popen([sys.executable, "-c", capture_script],
+                                                   cwd=PROJECT_ROOT_PATH,
+                                                   stdout=capture_log, stderr=capture_log)
+                try:
+                    sync_deadline_seconds = time.monotonic() + 20
+                    while True:
+                        if ffmpeg_pid_path.exists():
+                            ffmpeg_pid = int(ffmpeg_pid_path.read_text())
+                        sync_sizes = sync_log_path.read_text().splitlines() if sync_log_path.exists() else []
+                        if len(sync_sizes) >= 6 and int(sync_sizes[-1]) > 10000:
+                            break
+                        if capture_process.poll() is not None or time.monotonic() > sync_deadline_seconds:
+                            self.fail(capture_log_path.read_text())
+                        time.sleep(0.05)
+                    os.kill(ffmpeg_pid, signal.SIGKILL)
+                    capture_process.kill()
+                    capture_process.wait(timeout=5)
+                finally:
+                    if capture_process.poll() is None:
+                        capture_process.kill()
+                        capture_process.wait(timeout=5)
+                    if ffmpeg_pid is not None:
+                        try:
+                            os.kill(ffmpeg_pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+            self.assertGreaterEqual(output_path.stat().st_size, int(sync_sizes[-1]))
+            probe_result = subprocess.run([
+                "ffprobe", "-v", "error", "-show_packets", "-show_streams", "-of", "json", str(output_path),
+            ], capture_output=True, text=True, check=True, timeout=10)
+            recording_metadata = json.loads(probe_result.stdout)
+            streams_by_type = {stream["codec_type"]: stream for stream in recording_metadata["streams"]}
+            self.assertEqual(streams_by_type["video"]["codec_name"], "h264")
+            self.assertEqual(streams_by_type["audio"]["codec_name"], "aac")
+            for stream_type in ("video", "audio"):
+                stream_index = streams_by_type[stream_type]["index"]
+                last_packet_seconds = max(float(packet["pts_time"]) for packet in recording_metadata["packets"]
+                                          if packet["stream_index"] == stream_index)
+                self.assertGreater(last_packet_seconds, 3.5, stream_type)
+            subprocess.run([
+                "ffmpeg", "-v", "error", "-i", str(output_path), "-map", "0:v", "-map", "0:a",
+                "-f", "null", "-",
+            ], check=True, capture_output=True, timeout=10)
+
     def test_disk_write_failure_is_reported(self):
         class FullDiskCommandBuilder(SyntheticCommandBuilder):
             def build_recording_command(self, output_path):

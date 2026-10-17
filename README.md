@@ -82,6 +82,39 @@ directory to reclaim space; original recordings are outside it. Originals are
 never rotated or deleted automatically. Partial recordings after a failure are
 preserved and listed if nonempty, but may not be playable.
 
+## Disk writes and power loss
+
+Recording data is written during capture. The defaults close MKV clusters after
+about one second of media, request an H.264 keyframe about every second, and
+flush FFmpeg's output buffers. A background worker calls `fsync` on the recording
+and its directory entries every second. This reduces both application buffering
+and Linux's dirty-file cache; it does not wait until recording stops to sync.
+
+These defaults are in `recorder/config.py`:
+
+| Setting | Default |
+| --- | --- |
+| `recording_cluster_duration_milliseconds` | `1000` |
+| `recording_sync_interval_seconds` | `1.0` |
+| `recording_sync_shutdown_timeout_seconds` | `2.0` |
+
+The sync worker does not block capture on each flush. Sync failures fail the
+recording instead of reporting success. Normal shutdown finalizes FFmpeg and
+requests a final sync, with a separate two-second wait deadline. A blocked sync
+worker prevents additional sync workers from accumulating across capture retries.
+
+The one-second settings are **not a maximum footage-loss guarantee**. Encoder
+buffers, slow storage, filesystem errors, and SD-card controller behavior can
+still lose data. Shorter keyframe spacing may also increase file size. Use normal
+shutdown, or hardware that supplies enough power for shutdown, when preservation
+is essential. See [Linux fsync documentation](https://man7.org/linux/man-pages/man2/fsync.2.html)
+for the distinction between syncing a file and its directory entry.
+
+Tests verify periodic/final syncing, error reporting, bounded sync shutdown, and
+decodable audio/video after abruptly killing Python and FFmpeg. Killing processes
+leaves Linux's cache intact, so this does not validate a physical Pi power cut.
+Install a rebuilt image to apply these changes to the Pi.
+
 ## Capture settings
 
 The defaults in `recorder/config.py` request `/dev/video0`, MJPEG video at
@@ -192,12 +225,13 @@ flowchart TD
 - `recorder/bootstrap.py` connects dependencies; `config.py` owns app defaults.
 - `recorder/services/` coordinates recording, retry lifecycle, and replay jobs.
 - `recorder/ports/` defines capture, storage, library, converter, and browser
-  lifecycle contracts.
+  lifecycle contracts, including recording sync operations.
 - `recorder/ffmpeg/` builds capture arguments, owns the capture child, and
   prepares saved-file playback copies in a separate adapter.
 - `recorder/live/` parses captured multipart JPEG frames and keeps the newest.
 - `recorder/storage/` creates recording paths, checks saves, and confines
-  library access to finished regular files.
+  library access to finished regular files. `recording_file_syncer.py` owns
+  periodic and final recording/directory syncing in a separate worker.
 - `recorder/web/` serves HTTP routes and bundled HTML/CSS/JavaScript offline.
 - `recorder/recording_state.py` shares recording status safely across threads.
 - `recorder/signals.py` turns Ctrl+C/SIGTERM into a shared stop event;
@@ -208,7 +242,8 @@ The live reader always drains FFmpeg output, independently of browser clients.
 On shutdown, capture gets up to 15 seconds to finalize before it is killed and
 reaped; conversion is cancelled and its partial cache file removed. Originals
 and partial recordings are preserved. Existing recordings cannot be overwritten.
-A successful save requires a successful capture result and a nonempty file;
+A successful save requires a successful capture result, successful final sync,
+and a nonempty file;
 this does not establish hardware signal quality or A/V synchronization.
 
 Tests use generated media and mocks, never physical capture devices. They cover

@@ -88,6 +88,11 @@ These guidelines apply to the entire repository.
 - Report success only after capture returns successfully and storage confirms a
   nonempty output file. This check does not establish signal quality or A/V sync.
 - Preserve partial recordings after failures. Cache cleanup must not delete media.
+- Keep periodic and final recording/directory syncing in its storage adapter,
+  assembled in `bootstrap.py`. Fail capture on sync errors, bound sync shutdown,
+  and prevent blocked sync workers from accumulating across retries. Cover crash
+  recovery with generated media; distinguish process death from physical power
+  loss and never claim a guaranteed loss window based on flush settings alone.
 - Derive live frames from the existing capture process. Never open the camera
   again for a browser viewer. Drain preview output even without viewers; keep
   only the latest frame so a slow client cannot stall recording.

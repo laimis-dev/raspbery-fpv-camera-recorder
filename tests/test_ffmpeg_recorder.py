@@ -31,3 +31,29 @@ class FFmpegRecorderTests(unittest.TestCase):
         with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", side_effect=FileNotFoundError):
             with self.assertRaisesRegex(RecordingError, "FFmpeg is missing"):
                 ffmpeg_recorder.record_to_file(Path("unused.mkv"), Event())
+
+    def test_sync_failure_stops_and_reaps_capture(self):
+        mock_ffmpeg_process = Mock()
+        mock_ffmpeg_process.poll.return_value = None
+        recording_syncer = Mock()
+        recording_syncer.check_sync_failure.side_effect = RecordingError("disk sync failed")
+        ffmpeg_recorder = FFmpegRecorder(FFmpegCommandBuilder(Settings()), 15,
+                                        recording_syncer=recording_syncer)
+        with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", return_value=mock_ffmpeg_process):
+            with self.assertRaisesRegex(RecordingError, "disk sync failed"):
+                ffmpeg_recorder.record_to_file(Path("unused.mkv"), Event())
+        mock_ffmpeg_process.kill.assert_called_once()
+        mock_ffmpeg_process.wait.assert_called_once()
+        recording_syncer.stop_syncing.assert_called_once()
+
+    def test_final_sync_failure_does_not_report_success(self):
+        mock_ffmpeg_process = Mock()
+        mock_ffmpeg_process.wait.return_value = 0
+        mock_ffmpeg_process.poll.return_value = 0
+        recording_syncer = Mock()
+        recording_syncer.stop_syncing.side_effect = RecordingError("final sync failed")
+        ffmpeg_recorder = FFmpegRecorder(FFmpegCommandBuilder(Settings()), 15,
+                                        recording_syncer=recording_syncer)
+        with patch("recorder.ffmpeg.ffmpeg_recorder.subprocess.Popen", return_value=mock_ffmpeg_process):
+            with self.assertRaisesRegex(RecordingError, "final sync failed"):
+                ffmpeg_recorder.record_to_file(Path("unused.mkv"), Event())

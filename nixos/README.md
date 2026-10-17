@@ -205,6 +205,15 @@ which asks FFmpeg to finalize. systemd allows 25 seconds for capture and the
 background services to stop; capture's deadline is 15 seconds. Power removal
 cannot finalize recordings gracefully.
 
+The app closes recording clusters and requests keyframes about once per second,
+and syncs recording data and directory entries every second in a background
+worker. Normal shutdown also waits up to two seconds for final syncing. These
+settings are in `recorder/config.py`, not duplicated in the boot service.
+They reduce power-loss exposure but do not guarantee a maximum lost duration or
+prevent SD-card/filesystem corruption. Process-kill recovery tests do not replace
+physical power-cut validation on the Pi. A safe shutdown or power hold-up hardware
+is still needed when recording preservation is essential.
+
 ## Storage and local management
 
 Recordings and `.playback-cache/` are under `/var/lib/fpv-recorder/recordings`.

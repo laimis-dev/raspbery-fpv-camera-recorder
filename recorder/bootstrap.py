@@ -11,6 +11,7 @@ from recorder.services.playback_service import PlaybackService
 from recorder.services.recording_service import RecordingService
 from recorder.storage.file_recording_library import FileRecordingLibrary
 from recorder.storage.recording_files import RecordingFiles
+from recorder.storage.recording_file_syncer import RecordingFileSyncer
 from recorder.web.server import RecorderWebServer
 
 
@@ -24,6 +25,10 @@ def create_application_service(recording_settings: Settings) -> ApplicationServi
             command_builder=FFmpegCommandBuilder(recording_settings),
             shutdown_timeout_seconds=recording_settings.shutdown_timeout_seconds,
             frame_buffer=frame_buffer,
+            recording_syncer=RecordingFileSyncer(
+                sync_interval_seconds=recording_settings.recording_sync_interval_seconds,
+                shutdown_timeout_seconds=recording_settings.recording_sync_shutdown_timeout_seconds,
+            ),
         ),
         recording_store=RecordingFiles(recording_settings.recordings_directory_path),
         recording_state=recording_state,

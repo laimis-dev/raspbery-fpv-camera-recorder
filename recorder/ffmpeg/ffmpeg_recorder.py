@@ -10,16 +10,19 @@ from recorder.errors.recording_error import RecordingError
 from recorder.ffmpeg.command_builder import FFmpegCommandBuilder
 from recorder.live.frame_buffer import LiveFrameBuffer
 from recorder.live.mjpeg_reader import MJPEGReader
+from recorder.ports.recording_syncer import RecordingSyncer
 
 
 class FFmpegRecorder:
     def __init__(
         self, command_builder: FFmpegCommandBuilder, shutdown_timeout_seconds: float,
         frame_buffer: LiveFrameBuffer | None = None,
+        recording_syncer: RecordingSyncer | None = None,
     ) -> None:
         self.command_builder = command_builder
         self.shutdown_timeout_seconds = shutdown_timeout_seconds
         self.frame_buffer = frame_buffer
+        self.recording_syncer = recording_syncer
 
     def record_to_file(self, output_path: Path, stop_requested_event: Event) -> None:
         # Some FFmpeg versions exit successfully when -n refuses an existing file.
@@ -45,7 +48,11 @@ class FFmpegRecorder:
             preview_reader_thread.start()
         shutdown_started_at = None
         try:
+            if self.recording_syncer is not None:
+                self.recording_syncer.start_syncing(output_path)
             while True:
+                if self.recording_syncer is not None:
+                    self.recording_syncer.check_sync_failure()
                 if stop_requested_event.is_set() and shutdown_started_at is None:
                     shutdown_started_at = time.monotonic()
                     try:
@@ -70,6 +77,8 @@ class FFmpegRecorder:
                 ffmpeg_process.stdout.close()
             if self.frame_buffer is not None:
                 self.frame_buffer.clear_frame()
+            if self.recording_syncer is not None:
+                self.recording_syncer.stop_syncing()
 
         if exit_code != 0 and not (shutdown_started_at is not None and exit_code == 255):
             raise RecordingError(
